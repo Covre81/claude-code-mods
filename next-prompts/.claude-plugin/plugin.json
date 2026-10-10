@@ -1,0 +1,20 @@
+{
+  "name": "next-prompts",
+  "version": "0.1.0",
+  "description": "Band above the prompt with 3 next-step suggestions from a free Ollama cloud model; press one to draft it",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "model": {
+      "type": "string",
+      "title": "Ollama model",
+      "description": "Model that writes the suggestions. Measured 2026-10-06: gemma4:31b-cloud 0.8s, gpt-oss:20b-cloud 9.5s; glm/deepseek cloud need paid credits.",
+      "default": "gemma4:31b-cloud"
+    },
+    "ollamaUrl": {
+      "type": "string",
+      "title": "Ollama URL",
+      "description": "Base URL of the Ollama server",
+      "default": "http://127.0.0.1:11434"
+    }
+  }
+}
