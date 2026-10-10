@@ -1,0 +1,6 @@
+{
+  "name": "painel",
+  "version": "0.1.0",
+  "description": "Colorful band above the prompt: context-window weather and a replay of the last turn's edits, plus a standing ask for a plain-language reason before each edit",
+  "types": "./types/index.d.ts"
+}
