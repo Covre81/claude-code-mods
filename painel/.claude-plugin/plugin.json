@@ -1,6 +1,6 @@
 {
   "name": "painel",
-  "version": "0.1.0",
-  "description": "Colorful band above the prompt: context-window weather and a replay of the last turn's edits, plus a standing ask for a plain-language reason before each edit",
+  "version": "0.2.0",
+  "description": "Colorful band above the prompt: context-window weather, the last turn's tools, tokens, cache, cost and rate limits, a replay of its edits and an activity pane, plus a standing ask for a plain-language reason before each edit",
   "types": "./types/index.d.ts"
 }
