@@ -88,7 +88,17 @@ ${transcript(await $.session.messages())}`
 
   // A newer turn already started its own refresh: this answer is stale.
   if (!isCurrent()) return
-  await update($, band, () => ({ items: [...rules, ...items].slice(0, 3), note }))
+  await update($, band, () => ({ items: [...rules, ...items].slice(0, 3), note, picked: [] }))
+}
+
+/** The first pick replaces the draft; later ones stack under it, one per line, never twice. */
+async function pick($: EngineInterface, indexes: number[]): Promise<void> {
+  const { items, picked = [] } = await read($, band)
+  const fresh = indexes.filter(i => items[i] && !picked.includes(i))
+  if (fresh.length === 0) return
+  const text = fresh.map(i => items[i].text).join('\n')
+  await $.prompt.fill(picked.length === 0 ? { text } : { text: `\n${text}`, mode: 'append' })
+  await update($, band, b => ({ ...b, picked: [...picked, ...fresh] }))
 }
 
 export const register: Register = (on, options) => {
@@ -107,7 +117,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const { items, note } = await read($, band)
+    const { items, note, picked = [] } = await read($, band)
     if (e.props.hasSurvey || e.props.isWorking || (items.length === 0 && !note)) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
@@ -119,11 +129,14 @@ export const register: Register = (on, options) => {
         {items.map((s, i) => (
           <Button
             key={`s${i}`}
-            label={`${i + 1} ${s.label}`}
+            label={`${i + 1} ${picked.includes(i) ? '✓ ' : ''}${s.label}`}
             hotkey={String(i + 1)}
-            onPress={() => $.prompt.fill({ text: s.text })}
+            onPress={() => pick($, [i])}
           />
         ))}
+        {items.length > 1 ? (
+          <Button key="all" label="0 todas" hotkey="0" onPress={() => pick($, items.map((_, i) => i))} />
+        ) : null}
         {note ? <Text dimColor>{note}</Text> : null}
       </Box>
     )

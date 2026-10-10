@@ -47,7 +47,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
       return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ message: { content } }) } } as never
     })
     on('prompt.fill', (_$, e) => {
-      filled.push((e as { text: string }).text)
+      const { text, mode } = e as { text: string; mode: string }
+      filled.push(`${mode}:${text}`)
       return { isFilled: true } as never
     })
     on('turn.complete', () => ({ text: '' }))
@@ -70,11 +71,14 @@ for (const surface of ['terminal', 'desktop'] as const) {
       component: 'AbovePrompt',
       props: { hasSurvey: false, isWorking: false } as never,
     })
-    // Context past 200k puts /compact first; the invented /nope was dropped.
-    expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+    // Context past 200k puts /compact first; the invented /nope was dropped; plus "todas".
+    expect((await ui.findAll({ type: 'Button' })).length).toBe(3)
     expect(asked).toContain('testa o router')
 
+    // First pick replaces the draft, the next stacks under it, "todas" adds nothing already there.
     await ui.press({ key: 's1' })
-    expect(filled).toEqual(['roda o smoke test do router'])
+    await ui.press({ key: 's0' })
+    await ui.press({ key: 'all' })
+    expect(filled).toEqual(['replace:roda o smoke test do router', 'append:\n/compact'])
   })
 }
