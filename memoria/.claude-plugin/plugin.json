@@ -1,0 +1,5 @@
+{
+  "name": "memoria",
+  "version": "0.1.0",
+  "description": "Before each prompt, looks up the project's ai-memory and hands Claude the few most relevant past notes, marked as untrusted history"
+}
