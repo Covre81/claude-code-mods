@@ -1,4 +1,4 @@
-export type Card = { src: 'it' | 'dev' | 'linux'; front: string; back: string; topic?: string }
+export type Card = { src: 'it' | 'dev' | 'linux' | 'cap'; front: string; back: string; topic?: string }
 
 declare module 'claude-code' {
   interface PluginState {

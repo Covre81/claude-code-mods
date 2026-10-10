@@ -4,13 +4,16 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Card } from '../types'
 import { LINUX } from './linux'
 
-// Read-only by construction: this module only ever calls $.fs.read (Italian_Language lost data on 2026-08-09).
+// Read-only on disk by construction: this module only ever calls $.fs.read (Italian_Language lost data on 2026-08-09).
+// Captured cards live in the plugin's own $.store, never in the source decks.
 const SOURCES = {
   it: 'C:/Dev/Italian_Language/anki_export.json',
   dev: 'C:/Dev/RoadToBSCoDev/flashcards/deck.md',
 } as const
 
 const MAX = 280
+const CAP_KEY = 'captured'
+const CAP_MAX = 500
 
 const card = atom({ plugin: 'wait-quiz', key: 'card' } as const, null)
 const isRevealed = atom({ plugin: 'wait-quiz', key: 'isRevealed' } as const, false)
@@ -65,16 +68,78 @@ export function pick(ds: Card[][], rnd: () => number = Math.random): Card | null
   return deck[Math.floor(rnd() * deck.length)] ?? null
 }
 
+async function captured($: EngineInterface): Promise<Card[]> {
+  const v = await $.store.get(CAP_KEY).catch(() => undefined)
+  return Array.isArray(v) ? (v as Card[]) : []
+}
+
+/** Validates and appends one card to the captured deck; the reply is what the person or the model reads. */
+export function addCard(deck: readonly Card[], raw: { front?: unknown; back?: unknown; topic?: unknown }): { deck: Card[]; reply: string } {
+  const front = typeof raw.front === 'string' ? raw.front.trim() : ''
+  const back = typeof raw.back === 'string' ? raw.back.trim() : ''
+  const topic = typeof raw.topic === 'string' ? raw.topic.trim().slice(0, 40) : ''
+  if (!front || !back) return { deck: [...deck], reply: 'Cartão não salvo: frente e verso não podem ficar vazios.' }
+  if (front.length > MAX || back.length > MAX) return { deck: [...deck], reply: `Cartão não salvo: frente e verso têm no máximo ${MAX} caracteres cada.` }
+  if (deck.some(c => c.front.toLowerCase() === front.toLowerCase())) return { deck: [...deck], reply: `Já existe um cartão com essa frente: "${front}".` }
+  // ponytail: oldest dropped past CAP_MAX, keeps the store far under its 4 MiB cap.
+  const next = [...deck, { src: 'cap' as const, front, back, ...(topic ? { topic } : {}) }].slice(-CAP_MAX)
+  return { deck: next, reply: `📥 Cartão salvo em Capturados (${next.length} no deck): "${front}"` }
+}
+
+async function save($: EngineInterface, raw: { front?: unknown; back?: unknown; topic?: unknown }): Promise<string> {
+  const { deck, reply } = addCard(await captured($), raw)
+  await $.store.set(CAP_KEY, deck)
+  return reply
+}
+
+/** `/cartao frente | verso | tópico`, the topic optional. */
+export function parseCommand(args: string): { front?: string; back?: string; topic?: string } {
+  const [front, back, topic] = args.split('|').map(s => s.trim())
+  return { front, back, topic }
+}
+
 async function deal($: EngineInterface) {
-  const next = pick(await loadDecks($))
+  const cap = await captured($)
+  const next = pick([...(await loadDecks($)), ...(cap.length ? [cap] : [])])
   await update($, card, () => next)
   await update($, isRevealed, () => false)
 }
 
-const NAME = { it: '🇮🇹 PT→IT', dev: '💻 RoadToDev', linux: '🐧 Linux' } as const
+const NAME = { it: '🇮🇹 PT→IT', dev: '💻 RoadToDev', linux: '🐧 Linux', cap: '📥 Capturados' } as const
+const COLOR = { it: 'green', dev: 'cyan', linux: 'yellow', cap: 'magenta' } as const
 const label = (c: Card) => `${NAME[c.src]}${c.topic ? ` · ${c.topic}` : ''}`
 
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'cartao', description: 'Salva um cartão de estudo: /cartao frente | verso | tópico' })
+    await $.tool.register({
+      name: 'salvar_cartao',
+      description:
+        'Salva um cartão de estudo no deck "Capturados" do usuário, que aparece no quiz enquanto Claude trabalha. Use quando o usuário pedir para guardar algo, ou logo depois de explicar um conceito técnico que ele claramente não conhecia (no máximo um por resposta). Frente: uma pergunta curta. Verso: a resposta em português simples. Até 280 caracteres cada.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          front: { type: 'string', description: 'A pergunta' },
+          back: { type: 'string', description: 'A resposta, em português simples' },
+          topic: { type: 'string', description: 'Assunto curto, ex.: git, linux, react' },
+        },
+        required: ['front', 'back'],
+      },
+      isDeferred: false,
+    })
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('command.run', { command: 'cartao' }, async ($, e) => {
+    if (!e.args.trim()) return { text: `Uso: /cartao frente | verso | tópico. Capturados até agora: ${(await captured($)).length}.` }
+    return { text: await save($, parseCommand(e.args)) }
+  })
+
+  on('tool.call', { tool: 'mcp__wait-quiz__salvar_cartao' }, async ($, e) => {
+    const reply = await save($, e as { front?: unknown; back?: unknown; topic?: unknown }).catch(() => 'Cartão não salvo: falha ao gravar.')
+    return { result: reply }
+  })
+
   on('prompt.submit', async ($, e, next) => {
     if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') await deal($).catch(() => undefined)
     return next(e)
@@ -86,9 +151,11 @@ export const register: Register = on => {
     const revealed = await read($, isRevealed)
     const { Box, Button, Text } = $.ui.resolve(e)
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" borderStyle="round" borderColor={COLOR[c.src]} paddingX={1}>
         <Text>
-          <Text bold>{label(c)}</Text> {c.front}
+          <Text bold color={COLOR[c.src]}>
+            {label(c)}
+          </Text> {c.front}
         </Text>
         {revealed ? <Text color="green">→ {c.back}</Text> : null}
         <Box>

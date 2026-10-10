@@ -1,6 +1,6 @@
 {
   "name": "wait-quiz",
-  "version": "0.1.0",
-  "description": "While Claude works, a band above the prompt quizzes one card from Italian_Language (anki) or CPCS A17/A40; read-only",
+  "version": "0.2.0",
+  "description": "While Claude works, a band above the prompt quizzes one card from Italian_Language (anki), RoadToBSCoDev, Linux or cards captured with /cartao; never writes to the source decks",
   "types": "./types/index.d.ts"
 }

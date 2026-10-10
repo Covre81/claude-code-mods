@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { LINUX } from './linux'
-import { parseAnki, parseDeck, pick } from './register'
+import { addCard, parseAnki, parseCommand, parseDeck, pick } from './register'
 
 const ANKI = JSON.stringify([
   ['0001', 'Ter', 'Avere'],
@@ -72,5 +72,42 @@ test('terminal: band shows a card only while working, reveal shows the answer, n
   expect((await busy.findAll({ type: 'Button' })).length).toBe(2)
   await busy.press({ key: 'reveal' })
   expect((await busy.findAll({ type: 'Button' })).length).toBe(1)
+  expect(writes).toEqual([])
+})
+
+describe('captured cards', () => {
+  test('addCard validates, dedupes by front, keeps the topic', () => {
+    const one = addCard([], { front: 'O que faz git stash?', back: 'Guarda alterações de lado.', topic: 'git' })
+    expect(one.deck).toEqual([{ src: 'cap', front: 'O que faz git stash?', back: 'Guarda alterações de lado.', topic: 'git' }])
+    expect(addCard(one.deck, { front: 'o que faz GIT stash?', back: 'x' }).deck.length).toBe(1)
+    expect(addCard([], { front: '', back: 'x' }).deck.length).toBe(0)
+    expect(addCard([], { front: 'x'.repeat(281), back: 'y' }).deck.length).toBe(0)
+    expect(addCard([], { front: 42, back: 'y' }).deck.length).toBe(0)
+  })
+
+  test('parseCommand splits on pipes', () => {
+    expect(parseCommand(' frente | verso | linux ')).toEqual({ front: 'frente', back: 'verso', topic: 'linux' })
+    expect(parseCommand('só frente').back).toBe(undefined)
+  })
+})
+
+test('terminal: /cartao and the tool save to the store, never to disk', async ($, on) => {
+  mock.store(on)
+  const writes: string[] = []
+  on('fs.read', () => ({ deny: 'ENOENT' }) as never)
+  on('fs.write', (_$, e) => {
+    writes.push(String((e as { path: string }).path))
+    return { value: undefined } as never
+  })
+  on('command.register', () => ({ value: undefined }) as never)
+  on('tool.register', () => ({ value: { tool: 'mcp__wait-quiz__salvar_cartao' } }) as never)
+
+  const cmd = await $.command.run({ command: 'cartao', args: 'Para que serve chmod? | Muda permissões de arquivo | linux', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  expect(String((cmd as { text?: string }).text).startsWith('📥')).toBe(true)
+  const dup = await $.command.run({ command: 'cartao', args: 'para que serve CHMOD? | outra', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  expect(String((dup as { text?: string }).text).startsWith('Já existe')).toBe(true)
+
+  const tool = await $.tool.call({ tool: 'mcp__wait-quiz__salvar_cartao', front: 'O que é um PR?', back: 'Pedido para juntar seu código ao principal.' } as never)
+  expect(JSON.stringify(tool).includes('2 no deck')).toBe(true)
   expect(writes).toEqual([])
 })
