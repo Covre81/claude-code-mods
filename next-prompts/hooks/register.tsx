@@ -111,7 +111,9 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey || e.props.isWorking || (items.length === 0 && !note)) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    return (
+    // Stack over whatever the plugins beneath draw (painel's weather), so load order never hides either.
+    const below = await next(e)
+    const mine = (
       <Box gap={1}>
         <Text dimColor>next:</Text>
         {items.map((s, i) => (
@@ -125,5 +127,6 @@ export const register: Register = (on, options) => {
         {note ? <Text dimColor>{note}</Text> : null}
       </Box>
     )
+    return below.type === 'engine' ? mine : <Box flexDirection="column">{mine}{below}</Box>
   })
 }
