@@ -150,6 +150,7 @@ test('terminal: /chave writes .env, guards .gitignore, never echoes the value', 
     files[path.split(/[\\/]/).pop()!] = text
     return { value: undefined } as never
   })
+  on('fs.list', () => ({ value: Object.keys(files).map(name => ({ name, kind: 'file', size: 1 })) }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
   on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
@@ -167,4 +168,30 @@ test('terminal: /chave writes .env, guards .gitignore, never echoes the value', 
   expect(out.text).toBe('🔐 TESTE_KEY gravada no .env · .gitignore atualizado')
   expect(files['.gitignore']).toBe('node_modules\n.env\n')
   expect(files['.env']).toBe(`OTHER=1\nTESTE_KEY="fake value ${'z'.repeat(8)}"\n`)
+})
+
+test('terminal: /chave aborts without writing when an existing .env cannot be read', async ($, on) => {
+  const clock = mock.clock(on)
+  const writes: string[] = []
+  on('fs.list', () => ({ value: [{ name: '.env', kind: 'file', size: 9 }, { name: '.gitignore', kind: 'file', size: 9 }] }) as never)
+  on('fs.read', (_$, e) => ((e as { path: string }).path.endsWith('.env') ? { deny: 'EACCES' } : { value: 'node_modules\n' }) as never)
+  on('fs.write', (_$, e) => {
+    writes.push((e as { path: string }).path)
+    return { value: undefined } as never
+  })
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('ui.close', () => ({ value: undefined }) as never)
+  on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
+
+  const run = $.command.run({ command: 'chave', args: 'TESTE_KEY', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  await clock.settle()
+  const pane = await $.ui.mount({ plugin: 'cofre', surface: 'terminal', component: 'Pane', requestId: 'cofre', props: {} as never })
+  const secret = `fake value ${'y'.repeat(8)}`
+  await pane.input({ key: 'valor', text: secret, kind: 'submit' })
+  await clock.advance(300)
+  const out = String(((await run) as { text?: string }).text)
+
+  expect(writes).toEqual([])
+  expect(out.includes('não gravada')).toBe(true)
+  expect(out.includes(secret)).toBe(false)
 })

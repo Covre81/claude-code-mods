@@ -32,11 +32,18 @@ const WAIT_MS = 10 * 60 * 1000
 let pending: { name: string; value: string | null } | null = null
 
 async function save($: EngineInterface, name: string, value: string): Promise<string> {
-  // .gitignore first: a .env must never exist on disk un-ignored, not even for a moment.
-  const ignore = String(await $.fs.read('.gitignore').catch(() => ''))
+  // Only a file that is not listed counts as empty; a listed file that fails to read aborts before any write, so a lock or EACCES can't wipe the user's other secrets.
+  const listed = new Set((await $.fs.list()).filter(f => f.kind === 'file').map(f => f.name))
+  const readOrEmpty = async (file: string) => (listed.has(file) ? String(await $.fs.read(file)) : '')
+  let ignore: string, env: string
+  try {
+    ;[ignore, env] = [await readOrEmpty('.gitignore'), await readOrEmpty('.env')]
+  } catch (err) {
+    return `🔐 ${name} não gravada: não consegui ler o arquivo existente (${err instanceof Error ? err.message : 'erro de leitura'}).`
+  }
   const ignored = ensureGitignore(ignore)
+  // .gitignore first: a .env must never exist on disk un-ignored, not even for a moment.
   if (ignored !== ignore) await $.fs.write('.gitignore', ignored)
-  const env = String(await $.fs.read('.env').catch(() => ''))
   await $.fs.write('.env', upsertEnv(env, name, value))
   return `🔐 ${name} gravada no .env${ignored !== ignore ? ' · .gitignore atualizado' : ''}`
 }
