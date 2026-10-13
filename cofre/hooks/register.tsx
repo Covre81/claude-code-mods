@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 
-import { detect, envNames, envValues, isEnvFile, isSecretFile, maskDeep, secretReadTarget } from './secrets'
+import { detect, ensureGitignore, envNames, envValues, isEnvFile, isSecretFile, maskDeep, secretReadTarget, upsertEnv } from './secrets'
 
 type Call = Record<string, unknown> & { tool?: unknown }
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -22,6 +22,23 @@ async function refusal($: EngineInterface, call: Call): Promise<string | null> {
   if (tool === 'Read' && isEnvFile(target)) return null
   const names = isEnvFile(target) ? envNames(String(await $.fs.read(target).catch(() => ''))) : []
   return `Arquivo de segredo (${target}): conteúdo oculto pelo cofre.${names.length ? ` Variáveis definidas: ${names.join(', ')}.` : ''} Use os nomes; os valores ficam só no disco.`
+}
+
+const PANE = 'cofre'
+const NAME = /^[A-Z_][A-Z0-9_]*$/
+const WAIT_MS = 10 * 60 * 1000
+
+// The value the Input hands back; null while waiting, '' when cancelled. One /chave at a time.
+let pending: { name: string; value: string | null } | null = null
+
+async function save($: EngineInterface, name: string, value: string): Promise<string> {
+  // .gitignore first: a .env must never exist on disk un-ignored, not even for a moment.
+  const ignore = String(await $.fs.read('.gitignore').catch(() => ''))
+  const ignored = ensureGitignore(ignore)
+  if (ignored !== ignore) await $.fs.write('.gitignore', ignored)
+  const env = String(await $.fs.read('.env').catch(() => ''))
+  await $.fs.write('.env', upsertEnv(env, name, value))
+  return `🔐 ${name} gravada no .env${ignored !== ignore ? ' · .gitignore atualizado' : ''}`
 }
 
 export const register: Register = on => {
@@ -47,4 +64,51 @@ export const register: Register = on => {
     if (!hit) return next(e)
     return { drop: `🔐 Isso parece uma chave ${hit.kind} (${hit.sample}). Use /chave NOME para gravar no .env sem passar pelo chat. Para enviar mesmo assim, comece a mensagem com #ok` }
   }).catch(($, e, next) => (next.called ? next(e) : { drop: 'o cofre falhou ao conferir o prompt' })) // fail closed: a key must not reach the model unchecked
+
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'chave', description: 'Grava uma chave de API no .env sem ela passar pelo chat: /chave NOME' })
+    return next(e)
+  })
+
+  on('command.run', { command: 'chave' }, async ($, e) => {
+    const name = e.args.trim()
+    if (!NAME.test(name)) return { text: 'Uso: /chave NOME (maiúsculas, números e _), ex.: /chave OPENAI_API_KEY' }
+    if (pending) return { text: 'Já tem um /chave aberto.' }
+    const p: { name: string; value: string | null } = { name, value: null }
+    pending = p
+    try {
+      if (!(await $.ui.open({ id: PANE, title: 'Cofre', focus: true, closeOnEscape: true, rows: 6 })).isPlaced) return { text: 'Terminal estreito demais para o campo do cofre.' }
+      const startedAt = await $.clock.now()
+      while (p.value === null) {
+        if ((await $.clock.now()) - startedAt > WAIT_MS) return { text: `${name} não gravada: ninguém respondeu em 10 minutos.` }
+        await $.clock.sleep(250)
+      }
+      return { text: p.value ? await save($, name, p.value) : `${name} não gravada.` }
+    } finally {
+      pending = null
+      await $.ui.close({ id: PANE }).catch(() => undefined)
+    }
+  })
+
+  on('ui.close', ($, e, next) => {
+    if (e.id === PANE && pending && pending.value === null) pending.value = ''
+    return next(e)
+  })
+
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    const p = pending
+    if (e.requestId !== PANE || !p) return next(e)
+    const { Box, Input, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
+        <Text bold color="green">
+          🔐 Cofre · {p.name}
+        </Text>
+        <Input key="valor" label="Cole o valor e tecle Enter" autoFocus submitLabel="gravar" onSubmit={v => void (p.value ??= v.trim())} />
+        <Text dimColor wrap="wrap">
+          Vai para o .env desta pasta e não entra na conversa com o Claude. Esc cancela.
+        </Text>
+      </Box>
+    )
+  })
 }

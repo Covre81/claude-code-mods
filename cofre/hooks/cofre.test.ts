@@ -137,3 +137,34 @@ test('shell output carrying a secret comes back masked', async ($, on) => {
   const res = (await $.tool.call({ tool: 'PowerShell', command: 'echo $env:X' } as never)) as { result?: { stdout: string } }
   expect(res.result?.stdout).toBe('valor •••• e ••••')
 })
+
+test('terminal: /chave writes .env, guards .gitignore, never echoes the value', async ($, on) => {
+  const clock = mock.clock(on)
+  const files: Record<string, string> = { '.gitignore': 'node_modules\n', '.env': 'OTHER=1\n' }
+  on('fs.read', (_$, e) => {
+    const p = (e as { path: string }).path.split(/[\\/]/).pop()!
+    return (p in files ? { value: files[p] } : { deny: 'ENOENT' }) as never
+  })
+  on('fs.write', (_$, e) => {
+    const { path, text } = e as { path: string; text: string }
+    files[path.split(/[\\/]/).pop()!] = text
+    return { value: undefined } as never
+  })
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('ui.close', () => ({ value: undefined }) as never)
+  on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
+
+  const bad = (await $.command.run({ command: 'chave', args: 'minha chave', origin: { kind: 'composer' }, presentation: 'text' } as never)) as { text?: string }
+  expect(String(bad.text).startsWith('Uso:')).toBe(true)
+
+  const run = $.command.run({ command: 'chave', args: 'TESTE_KEY', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  await clock.settle()
+  const pane = await $.ui.mount({ plugin: 'cofre', surface: 'terminal', component: 'Pane', requestId: 'cofre', props: {} as never })
+  await pane.input({ key: 'valor', text: `fake value ${'z'.repeat(8)}`, kind: 'submit' })
+  await clock.advance(300)
+  const out = (await run) as { text?: string }
+
+  expect(out.text).toBe('🔐 TESTE_KEY gravada no .env · .gitignore atualizado')
+  expect(files['.gitignore']).toBe('node_modules\n.env\n')
+  expect(files['.env']).toBe(`OTHER=1\nTESTE_KEY="fake value ${'z'.repeat(8)}"\n`)
+})
