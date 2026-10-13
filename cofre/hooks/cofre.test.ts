@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { detect, isSecretFile } from './secrets'
+import { detect, ensureGitignore, envNames, envValues, isSecretFile, maskDeep, secretReadTarget, upsertEnv } from './secrets'
 
 // Fictitious values only, built with repeat() so no literal looks like a real key.
 const FAKE = {
@@ -31,5 +31,52 @@ describe('isSecretFile', () => {
       expect([p, isSecretFile(p)]).toEqual([p, true])
     for (const p of ['.env.example', '.env.sample', '.env.template', 'id_rsa.pub', 'environment.ts', 'src/env.ts', 'keys.md'])
       expect([p, isSecretFile(p)]).toEqual([p, false])
+  })
+})
+
+const VAL = `fake-${'x'.repeat(16)}`
+const ENV = `# comentário\nOPENAI_API_KEY=${VAL}\nexport QUOTED="${VAL} 2"\nPORT=3000\n`
+
+describe('.env', () => {
+  test('names and long values, quotes stripped', () => {
+    expect(envNames(ENV)).toEqual(['OPENAI_API_KEY', 'QUOTED', 'PORT'])
+    expect(envValues(ENV)).toEqual([VAL, `${VAL} 2`])
+  })
+
+  test('upsertEnv replaces or appends, quotes when needed, keeps $ literal', () => {
+    expect(upsertEnv('A=1\nB=2\n', 'B', 'novo')).toBe('A=1\nB=novo\n')
+    expect(upsertEnv('A=1', 'C', 'tem espaço')).toBe('A=1\nC="tem espaço"\n')
+    expect(upsertEnv('', 'D', 'a"b\\c')).toBe('D="a\\"b\\\\c"\n')
+    expect(upsertEnv('E=old\n', 'E', 'x$&y')).toBe('E=x$&y\n')
+  })
+
+  test('ensureGitignore adds .env once', () => {
+    expect(ensureGitignore('node_modules')).toBe('node_modules\n.env\n')
+    expect(ensureGitignore('')).toBe('.env\n')
+    for (const g of ['.env\n', 'dist\n.env*\n', '*.env\n', '/.env\n']) expect(ensureGitignore(g)).toBe(g)
+  })
+})
+
+describe('maskDeep', () => {
+  test('masks env values and detected keys anywhere, keeps the shape', () => {
+    const out = maskDeep({ stdout: `v=${VAL}`, list: [`k ${FAKE.google}`, 3], nested: { ok: 'PORT=3000' } }, [VAL])
+    expect(out).toEqual({ stdout: 'v=••••', list: ['k ••••', 3], nested: { ok: 'PORT=3000' } })
+  })
+
+  test('hides a whole private key block', () => {
+    expect(maskDeep('a\n-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----\nb', [])).toBe('a\n••••\nb')
+  })
+})
+
+describe('secretReadTarget', () => {
+  test('reader verb plus secret file', () => {
+    expect(secretReadTarget('cat .env')).toBe('.env')
+    expect(secretReadTarget('cd app && Get-Content "app/.env.local" | Select -First 3')).toBe('app/.env.local')
+    expect(secretReadTarget('type C:\\x\\server.pem')).toBe('C:\\x\\server.pem')
+  })
+
+  test('writes, copies and git pass', () => {
+    for (const c of ['cp .env.example .env', 'echo X=1 >> .env', 'git add .env', 'cat README.md', 'cat .env.example'])
+      expect([c, secretReadTarget(c)]).toEqual([c, null])
   })
 })
