@@ -32,7 +32,7 @@ nem commitado.
 | kind | padrão |
 |---|---|
 | anthropic | `sk-ant-[\w-]{20,}` |
-| openai | `sk-(proj-)?[A-Za-z0-9_-]{20,}` (depois de excluir `sk-ant-`) |
+| openai | `sk-(?!ant-)(proj-)?[A-Za-z0-9_-]{20,}` |
 | google | `AIza[0-9A-Za-z_-]{35}` |
 | jwt | `eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}` |
 | github | `ghp_[A-Za-z0-9]{36}`, `github_pat_[A-Za-z0-9_]{22,}` |
@@ -46,8 +46,16 @@ por entropia (falso positivo em hash/UUID). Ver `ponytail:` no código.
 `.env.sample`, `.env.template`), `*.pem`, `*.key`, `credentials*.json`, `id_rsa*`,
 `id_ed25519*` (exceto `*.pub`).
 
-`envNames(text)`: de um conteúdo `.env`, as linhas `NOME=valor` viram `NOME=••••`;
-comentários e linhas vazias ficam como estão.
+`envValues(text)`: de um conteúdo `.env`, os valores (sem aspas) com 8+ caracteres.
+`envNames(text)`: os nomes, para mensagens de negação.
+
+`maskDeep(value, secrets)`: percorre o resultado da ferramenta (string, array, objeto)
+e troca cada ocorrência de segredo por `••••`, preservando o formato.
+
+Motivo: `BuiltinToolResults` está vazio no `index.d.ts` (o resultado de `Read`/`Bash`
+é `unknown` em tipo; o core valida contra o schema em execução). Montar um `{ result }`
+do zero exigiria adivinhar o schema de cada ferramenta; mascarar o que `next(e)`
+devolveu mantém o formato que o core já aceitou.
 
 ### 2. Comando `/chave NOME`
 
@@ -66,12 +74,16 @@ comentários e linhas vazias ficam como estão.
 
 ### 3. Leitura de arquivo secreto (`tool.call`)
 
-- `Read` com `isSecretFile(file_path)` → `{ result }` com `envNames(conteúdo)` para
-  `.env*`; para os demais (`.pem`, `.key`…) `{ deny }` "arquivo de segredo, conteúdo
-  oculto pelo cofre".
+- `Read` de `.env*` → roda `next(e)` e devolve `{ result: maskDeep(r.result, envValues),
+  context: r.context }` — nunca espalhar `r` (o campo `text` de `r` traz o conteúdo
+  cru). O modelo vê os nomes e `••••` no lugar dos valores.
+- `Read` dos demais (`.pem`, `.key`, `id_rsa`…) → `{ deny }` "arquivo de segredo,
+  conteúdo oculto pelo cofre".
 - `Grep` cujo `path`/`glob` mira arquivo secreto → `{ deny }`.
-- `Bash`/`PowerShell` cujo comando lê arquivo secreto com `cat|type|Get-Content|gc|
-  more|less|head|tail` → `{ deny }` com a lista de nomes (`envNames`) quando é `.env*`.
+- `Bash`/`PowerShell`: comando quebrado em tokens (espaço, `;`, `|`, `&`); se tem um
+  verbo de leitura (`cat|type|Get-Content|gc|more|less|head|tail|source|.`) e um token
+  com `isSecretFile` → `{ deny }` com `envNames` quando é `.env*`. Ponytail: tokenização
+  simples, não o `classify` do guarda; a máscara (seção 4) é a rede de verdade.
 - `prompt.mention` (`@.env`) → `{ deny }` com a mesma mensagem.
 - Erro no gancho → `.catch` nega (fail closed).
 
@@ -80,7 +92,8 @@ comentários e linhas vazias ficam como estão.
 - Ferramentas: `Bash`, `PowerShell`, `Read`, `Grep`.
 - Valores a mascarar: os do `.env*` da pasta da sessão com 8+ caracteres (cache por
   `mtime`) + tudo que `detect` acha.
-- Troca cada ocorrência por `••••` no texto do resultado e devolve `{ result }`.
+- Só age se algum segredo aparece; devolve `{ result: maskDeep(r.result), context:
+  r.context }`. Sem segredo, devolve `r` intacto (core reaproveita `ref`).
 - Erro no gancho → `.catch` devolve o resultado de `next` se já houver, senão nega.
 - Limite conhecido: valor transformado (base64, URL-encoded) não é reconhecido.
 
@@ -90,6 +103,9 @@ comentários e linhas vazias ficam como estão.
   ({sample}). Use /chave NOME. Para enviar mesmo assim, comece com #ok".
 - Texto começando com `#ok` → remove o `#ok` e deixa passar.
 - Erro no gancho → deixa passar (não trava a digitação).
+- O texto do `drop` aparece ao usuário como motivo [CONFIRMADO, index.d.ts]. Se o
+  compositor mantém o texto digitado depois do `drop` não está documentado: verificar
+  à mão na primeira execução.
 
 ### 6. Commit com segredo (`guarda`, novo `Risk` `secret-commit`)
 
@@ -99,7 +115,9 @@ comentários e linhas vazias ficam como estão.
   --name-only` quando `-a`); arquivo secreto → risco.
 - Painel do guarda lista os arquivos; texto em `EXPLAIN`: "Coloca um arquivo de
   segredo no histórico do git. Mesmo apagado depois, continua nos commits antigos."
-- `isSecretFile` é importado de `cofre` (um só lugar para a regra).
+- O `guarda` tem sua própria cópia de `isSecretFile` (comentário `ponytail:` apontando
+  para a do `cofre`). Motivo: cada mod é carregado como plugin isolado; um import
+  `../../cofre` sai da raiz do plugin e pode não existir quando instalado.
 
 ## Fora de escopo
 
@@ -116,7 +134,8 @@ sempre com valores fictícios:
 - `isSecretFile`: `.env`, `.env.local` sim; `.env.example`, `id_rsa.pub` não.
 - `/chave TESTE` grava em `.env` simulado, substitui valor existente, acrescenta `.env`
   ao `.gitignore` quando falta e não duplica quando já está.
-- `Read` de `.env` devolve só nomes; `Bash` `cat .env` negado.
+- `maskDeep` em string, array e objeto aninhado.
+- `Read` de `.env` devolve nomes com `••••` e sem campo `text`; `Bash` `cat .env` negado.
 - Saída de `Bash` contendo valor do `.env` chega mascarada.
 - Prompt com `AIza…` falso é segurado; com `#ok` passa sem o prefixo.
 - `guarda`: `git add .env` vira `secret-commit`; `git add src/` sem segredo passa.
