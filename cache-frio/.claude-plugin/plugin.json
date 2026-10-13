@@ -1,0 +1,5 @@
+{
+  "name": "cache-frio",
+  "version": "0.1.0",
+  "description": "Asks before sending a prompt into a big conversation whose prompt cache has gone cold"
+}
