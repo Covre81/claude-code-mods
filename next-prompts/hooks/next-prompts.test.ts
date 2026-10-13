@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { parseSuggestions } from './register'
 
@@ -34,10 +35,84 @@ describe('parseSuggestions', () => {
   })
 })
 
+const OUT_OF_QUOTA = { status: 429, ok: false, headers: {}, text: JSON.stringify({ error: 'you have reached your monthly usage limit' }) }
+const ONE_SUGGESTION = '{"suggestions":[{"label":"segue","text":"continua"}]}'
+
+/** A quiet session; `answer` decides each Ollama call by URL and model, `agy` the Gemini one. */
+function world(on: On, answer: (url: string, model: string) => unknown, agy?: () => unknown) {
+  const asked: string[] = []
+  on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 1_000, window: 1_000_000, percent: 0 }, rateLimits: [], cost: null } }) as never)
+  on('command.list', () => ({ value: [] }) as never)
+  on('session.messages', () => ({ value: [{ role: 'user', text: 'oi', toolUses: [] }] }) as never)
+  on('http.fetch', (_$, e) => {
+    const { url, init } = e as { url: string; init?: { body?: string; headers?: Record<string, string> } }
+    const model = JSON.parse(String(init?.body)).model as string
+    asked.push(`${url.startsWith('https://ollama.com') ? `cloud(${init?.headers?.authorization})` : 'local'} ${model}`)
+    return { value: answer(url, model) } as never
+  })
+  on('process.run', (_$, e) => {
+    asked.push(`agy ${(e as { argv: string[] }).argv.join(' ')}`)
+    return { value: agy?.() } as never
+  })
+  on('turn.complete', () => ({ text: '' }))
+  on('ui.render', ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return h(Box, {}) as never
+  })
+  return asked
+}
+
+test('local models out of quota hand over to the other account on ollama.com', async ($, on) => {
+  mock.env(on, { NEXT_PROMPTS_OLLAMA_KEY: 'fake-key', LOCALAPPDATA: 'C:/fake' })
+  const asked = world(on, (url, model) =>
+    url.startsWith('https://ollama.com') && model === 'gemma4:31b'
+      ? { status: 200, ok: true, headers: {}, text: JSON.stringify({ message: { content: ONE_SUGGESTION } }) }
+      : OUT_OF_QUOTA,
+  )
+
+  await $.turn.complete({ reason: 'answer', answer: 'feito', durationMs: 1, isAborted: false, turnId: 't1' })
+  await new Promise(r => setTimeout(r, 50))
+
+  expect(asked).toEqual(['local gemma4:31b-cloud', 'local gpt-oss:20b-cloud', 'cloud(Bearer fake-key) gemma4:31b'])
+  const ui = await $.ui.mount({
+    plugin: 'next-prompts',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false } as never,
+  })
+  expect((await ui.findAll({ type: 'Button' })).length).toBe(1)
+  expect(await ui.findAll({ type: 'Text', text: /usage limit/ })).toEqual([])
+})
+
+test('with no other account, Gemini through agy is the last resort', async ($, on) => {
+  mock.env(on, { LOCALAPPDATA: 'C:/fake' })
+  const asked = world(on, () => OUT_OF_QUOTA, () => ({
+    exitCode: 0, stdout: ONE_SUGGESTION, stderr: '', isStdoutTruncated: false, isStderrTruncated: false,
+  }))
+
+  await $.turn.complete({ reason: 'answer', answer: 'feito', durationMs: 1, isAborted: false, turnId: 't1' })
+  await new Promise(r => setTimeout(r, 50))
+
+  expect(asked).toEqual([
+    'local gemma4:31b-cloud',
+    'local gpt-oss:20b-cloud',
+    'agy C:/fake/agy/bin/agy.exe --mode plan --model gemini-3.8-flash-low --print-timeout 60s',
+  ])
+  const ui = await $.ui.mount({
+    plugin: 'next-prompts',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false } as never,
+  })
+  expect((await ui.findAll({ type: 'Button' })).length).toBe(1)
+  expect(await ui.findAll({ type: 'Text', text: /usage limit/ })).toEqual([])
+})
+
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface}: after a turn the band offers the model's suggestions and a press drafts one`, async ($, on) => {
     const filled: string[] = []
     let asked = ''
+    mock.env(on, {})
     on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 250_000, window: 1_000_000, percent: 25 }, rateLimits: [], cost: null } }) as never)
     on('command.list', () => ({ value: [{ name: 'compact', description: '', source: 'builtin' }] }) as never)
     on('session.messages', () => ({ value: [{ role: 'user', text: 'testa o router', toolUses: [] }] }) as never)

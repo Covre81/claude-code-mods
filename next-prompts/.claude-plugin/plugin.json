@@ -6,9 +6,15 @@
   "userConfig": {
     "model": {
       "type": "string",
-      "title": "Ollama model",
-      "description": "Model that writes the suggestions. Measured 2026-10-06: gemma4:31b-cloud 0.8s, gpt-oss:20b-cloud 9.5s; glm/deepseek cloud need paid credits.",
-      "default": "gemma4:31b-cloud"
+      "title": "Ollama models",
+      "description": "Comma-separated, in order of preference: a model out of quota or erroring hands over to the next. Tried on the local server (the account signed in there), then, with NEXT_PROMPTS_OLLAMA_KEY set (another account's ollama.com API key), on ollama.com. Measured 2026-10-06: gemma4:31b-cloud 0.8s, gpt-oss:20b-cloud 9.5s; glm/deepseek cloud need paid credits.",
+      "default": "gemma4:31b-cloud,gpt-oss:20b-cloud"
+    },
+    "agyModel": {
+      "type": "string",
+      "title": "Gemini fallback (agy)",
+      "description": "Last resort when every Ollama source fails: this model through the Antigravity CLI, on the Gemini Pro subscription. Measured 2026-10-13: gemini-3.8-flash-low 7.8s. Empty turns it off.",
+      "default": "gemini-3.8-flash-low"
     },
     "ollamaUrl": {
       "type": "string",

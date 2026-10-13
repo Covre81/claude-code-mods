@@ -46,8 +46,57 @@ function transcript(messages: { role: string; text: string }[]): string {
   return out
 }
 
+const OLLAMA_CLOUD = 'https://ollama.com'
+
+/** One place the suggestions can come from: `ask` resolves the model's raw text or throws why not. */
+type Source = { name: string; ask: (prompt: string) => Promise<string> }
+
+async function ollamaChat($: EngineInterface, url: string, model: string, prompt: string, key?: string): Promise<string> {
+  let res
+  try {
+    res = await $.http.fetch(`${url}/api/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: 'json',
+        think: false,
+        options: { temperature: 0.3 },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+  } catch {
+    throw new Error(`offline (${url})`)
+  }
+  let body: { message?: { content?: string }; error?: string } = {}
+  try {
+    body = JSON.parse(res.text)
+  } catch {}
+  if (!res.ok || !body.message?.content) throw new Error(body.error ?? `HTTP ${res.status}`)
+  return body.message.content
+}
+
+/** Gemini through the Antigravity CLI: prompt on stdin only (with -p it answers empty, exit 0); plan mode cannot write. */
+async function agyChat($: EngineInterface, model: string, prompt: string): Promise<string> {
+  const base = await $.env.get('LOCALAPPDATA')
+  if (!base) throw new Error('LOCALAPPDATA unset')
+  const { exitCode, stdout, stderr } = await $.process.run(
+    [`${base}/agy/bin/agy.exe`, '--mode', 'plan', '--model', model, '--print-timeout', '60s'],
+    { stdin: prompt, timeoutMs: 90_000 },
+  )
+  if (exitCode !== 0 || !stdout.trim()) throw new Error(stderr.trim().split('\n').pop() || `exit ${exitCode}, empty`)
+  return stdout
+}
+
 /** Rule-based items first, then the model's; `isCurrent` drops an answer a newer turn superseded. */
-async function refresh($: EngineInterface, model: string, ollamaUrl: string, isCurrent: () => boolean): Promise<void> {
+async function refresh(
+  $: EngineInterface,
+  models: string[],
+  ollamaUrl: string,
+  agyModel: string,
+  isCurrent: () => boolean,
+): Promise<void> {
   const rules: Suggestion[] = []
   const { context } = await $.session.usage()
   if (context.tokens >= CONTEXT_WARN_TOKENS) {
@@ -64,26 +113,32 @@ Return ONLY JSON: {"suggestions":[{"label":"<=40 chars","text":"<full prompt to 
 Recent conversation:
 ${transcript(await $.session.messages())}`
 
+  // In order of preference, tried every turn: one out of quota or erroring hands over to the
+  // next, and the first comes back on its own once its quota resets.
+  const sources: Source[] = models.map(model => ({ name: model, ask: p => ollamaChat($, ollamaUrl, model, p) }))
+  // A second Ollama account: the local server holds one sign-in, the cloud API takes any account's key.
+  const key = await $.env.get('NEXT_PROMPTS_OLLAMA_KEY')
+  if (key) {
+    for (const model of models) {
+      const cloud = model.replace(/-cloud$/, '')
+      sources.push({ name: `ollama.com ${cloud}`, ask: p => ollamaChat($, OLLAMA_CLOUD, cloud, p, key) })
+    }
+  }
+  if (agyModel) sources.push({ name: `agy ${agyModel}`, ask: p => agyChat($, agyModel, p) })
+
   let items: Suggestion[] = []
   let note: string | null = null
-  try {
-    const res = await $.http.fetch(`${ollamaUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        stream: false,
-        format: 'json',
-        think: false,
-        options: { temperature: 0.3 },
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-    const body = JSON.parse(res.text) as { message?: { content?: string }; error?: string }
-    if (!res.ok || !body.message?.content) note = `${model}: ${body.error ?? `HTTP ${res.status}`}`
-    else items = parseSuggestions(body.message.content, known)
-  } catch {
-    note = `Ollama offline (${ollamaUrl})`
+  for (const source of sources) {
+    try {
+      items = parseSuggestions(await source.ask(prompt), known)
+      if (items.length > 0) {
+        note = null
+        break
+      }
+      note = `${source.name}: sem sugestões válidas`
+    } catch (err) {
+      note = `${source.name}: ${(err as Error).message.slice(0, 120)}`
+    }
   }
 
   // A newer turn already started its own refresh: this answer is stale.
@@ -102,8 +157,13 @@ async function pick($: EngineInterface, indexes: number[]): Promise<void> {
 }
 
 export const register: Register = (on, options) => {
-  const model = String(options.model ?? 'gemma4:31b-cloud')
+  const models = String(options.model ?? 'gemma4:31b-cloud,gpt-oss:20b-cloud')
+    .split(',')
+    .map(m => m.trim())
+    .filter(Boolean)
   const ollamaUrl = String(options.ollamaUrl ?? 'http://127.0.0.1:11434').replace(/\/$/, '')
+  // Empty turns the Gemini fallback off.
+  const agyModel = String(options.agyModel ?? 'gemini-3.8-flash-low').trim()
   let generation = 0
 
   on('turn.complete', async ($, e, next) => {
@@ -112,7 +172,7 @@ export const register: Register = (on, options) => {
     if (e.agentId || e.isAborted) return result
     // Unawaited: the band fills in when the model answers, the turn never waits on it.
     const mine = ++generation
-    void refresh($, model, ollamaUrl, () => mine === generation).catch(() => undefined)
+    void refresh($, models, ollamaUrl, agyModel, () => mine === generation).catch(() => undefined)
     return result
   })
 
