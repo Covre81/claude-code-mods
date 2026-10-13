@@ -1,3 +1,4 @@
+import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { classify, commitCandidate, packageName } from './register'
@@ -76,12 +77,12 @@ describe('commitCandidate', () => {
   })
 })
 
-function gitAddWorld(on: Parameters<Parameters<typeof test>[1]>[1], stdout: string | ((cmd: string[]) => string)) {
+function gitAddWorld(on: On, stdout: string | ((cmd: string[]) => string), cwd: object = { value: 'C:/Dev/app' }) {
   let ran = false
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
   on('process.run', (_$, e) => ({ value: { exitCode: 0, stdout: typeof stdout === 'string' ? stdout : stdout((e as { argv?: string[] }).argv ?? []), stderr: '' } }) as never)
-  on('session.cwd', () => ({ value: 'C:/Dev/app' }) as never)
+  on('session.cwd', () => cwd as never)
   on('fs.stat', () => ({ value: { kind: 'dir' } }) as never)
   on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
   on('tool.call', () => {
@@ -145,5 +146,24 @@ test('terminal: a risky PowerShell command waits for Cancelar and is denied', as
   await clock.advance(300)
   const res = (await call) as { isError?: boolean; text?: string; deny?: string }
   expect(ran).toBe(false)
+  expect(String(res.deny ?? res.text).includes('Não tente de novo')).toBe(true)
+})
+
+test('terminal: git rm --cached .env && git commit is not held (removals are filtered out)', async ($, on) => {
+  const ran = gitAddWorld(on, cmd => (cmd.includes('--diff-filter=d') ? '' : '.env\n'))
+  await $.tool.call({ tool: 'Bash', command: 'git rm --cached .env && git commit -m tira' } as never)
+  expect(ran()).toBe(true)
+})
+
+test('terminal: session.cwd failing lets a lone git add pass', async ($, on) => {
+  const ran = gitAddWorld(on, "add '.env'\n", { deny: 'cwd indisponível' })
+  await $.tool.call({ tool: 'Bash', command: 'git add .env' } as never)
+  expect(ran()).toBe(true)
+})
+
+test('terminal: session.cwd failing still holds the classify risks of the same line', async ($, on) => {
+  const ran = gitAddWorld(on, cmd => (cmd[0] === 'add' ? "add '.env'\n" : ' M a.ts\n'), { deny: 'cwd indisponível' })
+  const res = (await $.tool.call({ tool: 'Bash', command: 'git add . && git reset --hard' } as never)) as { deny?: string; text?: string }
+  expect(ran()).toBe(false)
   expect(String(res.deny ?? res.text).includes('Não tente de novo')).toBe(true)
 })

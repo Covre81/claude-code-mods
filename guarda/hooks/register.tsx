@@ -207,8 +207,8 @@ async function stagedSecrets($: EngineInterface, risk: Extract<Risk, { kind: 'se
     risk.label === 'git add'
       ? (await out(['add', '-n', ...risk.args])).map(l => /^add '(.+)'$/.exec(l.trim())?.[1] ?? '')
       : [
-          ...(await out(['diff', '--cached', '--name-only'])),
-          ...(risk.args.includes('--all') || risk.args.some(a => /^-[^-]*a/.test(a)) ? await out(['diff', '--name-only']) : []),
+          ...(await out(['diff', '--cached', '--name-only', '--diff-filter=d'])),
+          ...(risk.args.includes('--all') || risk.args.some(a => /^-[^-]*a/.test(a)) ? await out(['diff', '--name-only', '--diff-filter=d']) : []),
         ]
   return [...new Set(files.map(f => f.trim()).filter(f => f && isSecretFile(f)))]
 }
@@ -394,13 +394,14 @@ export const register: Register = on => {
       risks = [] // a classifier bug must never block every shell call
     }
     // Every add/commit is a candidate; hold only those where git lists a secret file. A git failure lets it pass, as a classifier bug does.
-    const base = risks.some(r => r.kind === 'secret-commit') ? toWin(await $.session.cwd()) : ''
+    const base = risks.some(r => r.kind === 'secret-commit') ? toWin(await $.session.cwd().catch(() => '')) : ''
     const kept: Risk[] = []
     for (const r of risks) {
       if (r.kind !== 'secret-commit') {
         kept.push(r)
         continue
       }
+      if (!base) continue // no cwd: cannot ask git, but classify risks stay held
       const cwd = await resolveDir($, base, r.dir).catch(() => null)
       const found = cwd === null ? [] : await stagedSecrets($, r, cwd).catch(() => [])
       if (found.length) kept.push(r)
