@@ -1,3 +1,4 @@
+import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
 import { hasDelete, rewrite } from './register'
@@ -35,4 +36,40 @@ describe('rewrite', () => {
   test('powershell: dot-sources the shadow, original command intact at the end', () => {
     expect(rewrite('del a', 'powershell', 'C:/m/lixeira/hooks')).toBe(`. 'C:/m/lixeira/hooks/remove-item.ps1'; del a`)
   })
+})
+
+function shell(on: On) {
+  const ran: string[] = []
+  on('tool.call', (_$, e) => {
+    ran.push(String((e as { command?: unknown }).command))
+    return { result: { stdout: '', stderr: '' } } as never
+  })
+  return ran
+}
+
+test('a command without delete reaches the shell unchanged', async ($, on) => {
+  const ran = shell(on)
+  await $.tool.call({ tool: 'Bash', command: 'ls -la' } as never)
+  await $.tool.call({ tool: 'PowerShell', command: 'Get-ChildItem' } as never)
+  expect(ran).toEqual(['ls -la', 'Get-ChildItem'])
+})
+
+test('rm and Remove-Item reach the shell rewritten, original at the end', async ($, on) => {
+  const ran = shell(on)
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf dist' } as never)
+  await $.tool.call({ tool: 'PowerShell', command: 'del a.txt' } as never)
+  expect(ran[0]!.startsWith('rm() { powershell.exe')).toBe(true)
+  expect(ran[0]!.endsWith('/hooks/lixeira.ps1\' "$@"; }; rm -rf dist')).toBe(true)
+  expect(ran[1]!.endsWith("/hooks/remove-item.ps1'; del a.txt")).toBe(true)
+})
+
+test('a failure after the rewritten command ran never runs the original', async ($, on) => {
+  const ran: string[] = []
+  on('tool.call', (_$, e) => {
+    ran.push(String((e as { command?: unknown }).command))
+    throw new Error('boom')
+  })
+  await $.tool.call({ tool: 'Bash', command: 'rm a.txt' } as never).catch(() => undefined)
+  expect(ran.length).toBe(1)
+  expect(ran[0]!.includes('lixeira.ps1')).toBe(true)
 })

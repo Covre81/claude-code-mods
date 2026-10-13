@@ -29,4 +29,17 @@ export function rewrite(command: string, shell: Shell, hooks: string): string {
   return `rm() { powershell.exe -NoProfile -NonInteractive -File '${hooks}/lixeira.ps1' "$@"; }; ${command}`
 }
 
-export const register: Register = () => {}
+export const register: Register = on => {
+  on('tool.call', { tool: ['Bash', 'PowerShell'] }, ($, e, next) => {
+    if (e.tool !== 'Bash' && e.tool !== 'PowerShell') return next(e)
+    const sh: Shell = e.tool === 'Bash' ? 'bash' : 'powershell'
+    const command = String(e.command ?? '')
+    const hooks = `${$.plugin.root.replace(/\\/g, '/')}/hooks`
+    if (hooks.includes("'") || !hasDelete(command, sh)) return next(e)
+    return next({ ...e, command: rewrite(command, sh, hooks) } as typeof e)
+  }).catch(($, e, next) =>
+    // Before next: let the original run (a lixeira bug must not block the shell; guarda still holds rm -rf).
+    // After next: the rewritten delete already ran — running the original now would delete for good.
+    next.called ? { deny: 'A lixeira falhou depois de rodar o comando. Confira o resultado antes de repetir.' } : next(e),
+  )
+}
