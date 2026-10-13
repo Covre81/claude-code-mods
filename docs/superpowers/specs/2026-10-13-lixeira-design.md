@@ -103,9 +103,15 @@ Recebe flags e caminhos e imita o `rm` real, porque o modelo raciocina pela saí
 ## Limites conhecidos
 
 - Não cobertos (apagam de vez, como hoje): `xargs rm`, `find -exec rm`, `find -delete`,
-  `/usr/bin/rm`, `\rm`, `command rm`, `bash -c "rm …"`, scripts (`rimraf`),
-  `Microsoft.PowerShell.Management\Remove-Item`, `[IO.File]::Delete`, `cmd /c del`,
-  `git clean`/`git rm` (o `guarda` cuida dos `git` destrutivos).
+  `/usr/bin/rm`, `\rm`, `command`/`env`/`exec`/`nohup rm`, `bash -c "rm …"`, `echo $(rm a)`,
+  `sleep 1 & rm a` (o `&` simples não separa), scripts (`rimraf`),
+  `Microsoft.PowerShell.Management\Remove-Item`, `$null = Remove-Item x`, `& Remove-Item`,
+  `[IO.File]::Delete`, `cmd /c del`, `git clean`/`git rm` (o `guarda` cuida dos `git` destrutivos).
+- Drive de rede, UNC ou removível: recusado ("drive sem Lixeira; nada foi apagado"), porque lá
+  o Windows apagaria de vez em silêncio.
+- PowerShell: `-Filter`/`-Include`/`-Exclude` são recusados sem apagar; o caminho é
+  `Get-ChildItem … | Remove-Item`. `Env:`, `HKCU:` e outros providers vão para o cmdlet real
+  (não há Lixeira para eles).
 - Custo: ~0,8 s por chamada de `rm` (início do PowerShell). Um laço com centenas de
   `rm` separados fica lento.
 - [INFERIDO, não testado sem encher o disco] Pasta maior que o limite da Lixeira

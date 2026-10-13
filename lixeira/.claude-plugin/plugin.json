@@ -1,0 +1,5 @@
+{
+  "name": "lixeira",
+  "version": "0.1.0",
+  "description": "Sends rm / Remove-Item targets to the Windows Recycle Bin instead of deleting them for good"
+}
