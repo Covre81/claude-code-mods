@@ -76,11 +76,11 @@ describe('commitCandidate', () => {
   })
 })
 
-function gitAddWorld(on: Parameters<Parameters<typeof test>[1]>[1], stdout: string) {
+function gitAddWorld(on: Parameters<Parameters<typeof test>[1]>[1], stdout: string | ((cmd: string[]) => string)) {
   let ran = false
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
-  on('process.run', () => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never)
+  on('process.run', (_$, e) => ({ value: { exitCode: 0, stdout: typeof stdout === 'string' ? stdout : stdout((e as { argv?: string[] }).argv ?? []), stderr: '' } }) as never)
   on('session.cwd', () => ({ value: 'C:/Dev/app' }) as never)
   on('fs.stat', () => ({ value: { kind: 'dir' } }) as never)
   on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
@@ -98,6 +98,19 @@ test('terminal: git add of a .env is held as secret-commit', async ($, on) => {
   await clock.settle()
   const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
   expect(JSON.stringify(await pane.findAll({ type: 'Text' })).includes('.env')).toBe(true)
+  await pane.press({ key: 'cancel' })
+  await clock.advance(300)
+  const res = (await call) as { deny?: string; text?: string }
+  expect(ran()).toBe(false)
+  expect(String(res.deny ?? res.text).includes('arquivo de segredo')).toBe(true)
+})
+
+test('terminal: a secret in a later git add of the line is still held', async ($, on) => {
+  const clock = mock.clock(on)
+  const ran = gitAddWorld(on, cmd => (cmd.includes('.env') ? "add '.env'\n" : "add 'src/a.ts'\n"))
+  const call = $.tool.call({ tool: 'Bash', command: 'git add src/ && git add .env && git commit -m x' } as never)
+  await clock.settle()
+  const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
   await pane.press({ key: 'cancel' })
   await clock.advance(300)
   const res = (await call) as { deny?: string; text?: string }

@@ -84,15 +84,20 @@ function gitParts(args: string[], dir: Dir) {
   return { sub: args[i], rest: args.slice(i + 1), gitDir }
 }
 
-/** A git add/commit that may carry a secret file; only git itself can tell, so register.tsx asks it before holding. */
-export function commitCandidate(command: string): Extract<Risk, { kind: 'secret-commit' }> | null {
+type Candidate = Extract<Risk, { kind: 'secret-commit' }>
+
+/** Every git add/commit of the line that may carry a secret file; only git itself can tell, so the hook asks it before holding. */
+export function commitCandidates(command: string): Candidate[] {
+  const found: Candidate[] = []
   for (const { cmd, args, dir } of commands(command)) {
     if (cmd !== 'git') continue
     const { sub, rest, gitDir } = gitParts(args, dir)
-    if (sub === 'add' || sub === 'commit') return { kind: 'secret-commit', label: `git ${sub}`, args: rest, dir: gitDir }
+    if (sub === 'add' || sub === 'commit') found.push({ kind: 'secret-commit', label: `git ${sub}`, args: rest, dir: gitDir })
   }
-  return null
+  return found
 }
+
+export const commitCandidate = (command: string): Candidate | null => commitCandidates(command)[0] ?? null
 
 function classifyCmd(cmd: string, args: string[], dir: Dir): Risk | null {
   if (cmd === 'rm' || cmd.endsWith('/rm')) {
@@ -384,17 +389,23 @@ export const register: Register = on => {
     const command = String(e.command ?? '')
     let risks: Risk[] = []
     try {
-      risks = [commitCandidate(command), classify(command)].filter((r): r is Risk => r !== null)
+      risks = [...commitCandidates(command), classify(command)].filter((r): r is Risk => r !== null)
     } catch {
       risks = [] // a classifier bug must never block every shell call
     }
-    const candidate = risks.find(r => r.kind === 'secret-commit')
-    if (candidate?.kind === 'secret-commit') {
-      // Every add/commit is a candidate; hold only when git lists a secret file. A git failure lets it pass, as a classifier bug does.
-      const cwd = await resolveDir($, toWin(await $.session.cwd()), candidate.dir).catch(() => null)
-      const found = cwd === null ? [] : await stagedSecrets($, candidate, cwd).catch(() => [])
-      if (!found.length) risks = risks.filter(r => r !== candidate)
+    // Every add/commit is a candidate; hold only those where git lists a secret file. A git failure lets it pass, as a classifier bug does.
+    const base = risks.some(r => r.kind === 'secret-commit') ? toWin(await $.session.cwd()) : ''
+    const kept: Risk[] = []
+    for (const r of risks) {
+      if (r.kind !== 'secret-commit') {
+        kept.push(r)
+        continue
+      }
+      const cwd = await resolveDir($, base, r.dir).catch(() => null)
+      const found = cwd === null ? [] : await stagedSecrets($, r, cwd).catch(() => [])
+      if (found.length) kept.push(r)
     }
+    risks = kept
     for (const risk of risks) {
       const verdict = await hold($, command, risk, next.signal)
       if (!verdict.isOk)
