@@ -69,7 +69,10 @@ test('a failure after the rewritten command ran never runs the original', async 
     ran.push(String((e as { command?: unknown }).command))
     throw new Error('boom')
   })
-  await $.tool.call({ tool: 'Bash', command: 'rm a.txt' } as never).catch(() => undefined)
+  const out = await $.tool.call({ tool: 'Bash', command: 'rm a.txt' } as never)
+  expect(out).toEqual({
+    deny: 'A lixeira falhou depois de rodar o comando. Confira o resultado antes de repetir.',
+  })
   expect(ran.length).toBe(1)
   expect(ran[0]!.includes('lixeira.ps1')).toBe(true)
 })
