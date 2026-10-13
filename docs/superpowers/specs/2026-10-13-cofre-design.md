@@ -109,7 +109,9 @@ devolveu mantém o formato que o core já aceitou.
 - `detect(e.text)` não vazio → `{ drop }` com aviso: "parece uma chave {kind}
   ({sample}). Use /chave NOME. Para enviar mesmo assim, comece com #ok".
 - Texto começando com `#ok` → remove o `#ok` e deixa passar.
-- Erro no gancho → deixa passar (não trava a digitação).
+- Erro no gancho → segura (`.catch` com `next.called ? next(e) : { drop }`, idioma do
+  index.d.ts). Decidido em 2026-10-13: um bug que trava a digitação é visível e se
+  resolve desligando o mod; uma chave que vaza precisa ser rotacionada.
 - O texto do `drop` aparece ao usuário como motivo [CONFIRMADO, index.d.ts]. Se o
   compositor mantém o texto digitado depois do `drop` não está documentado: verificar
   à mão na primeira execução.
