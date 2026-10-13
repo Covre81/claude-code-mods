@@ -4,8 +4,8 @@ export type Hit = { kind: string; sample: string }
 
 // ponytail: fixed provider prefixes, no entropy scoring (false positives on hashes and UUIDs); add a row when a new provider shows up.
 const PATTERNS: readonly (readonly [string, RegExp])[] = [
-  ['anthropic', /sk-ant-[\w-]{20,}/g],
-  ['openai', /sk-(?!ant-)(?:proj-)?[\w-]{20,}/g],
+  ['anthropic', /(?<![\w-])sk-ant-[\w-]{20,}/g],
+  ['openai', /(?<![\w-])sk-(?!ant-)(?:proj-)?[\w-]{20,}/g],
   ['google', /AIza[\w-]{35}/g],
   ['jwt', /eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}/g],
   ['github', /ghp_[A-Za-z0-9]{36}|github_pat_\w{22,}/g],

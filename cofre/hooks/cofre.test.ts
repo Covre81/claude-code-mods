@@ -20,7 +20,7 @@ describe('detect', () => {
   })
 
   test('hashes, UUIDs and short sk- pass', () => {
-    for (const text of ['commit 3f9a1c0b7e2d4f6a8b0c1d2e3f4a5b6c7d8e9f01', '123e4567-e89b-12d3-a456-426614174000', 'sk-short', 'task-ant-x'])
+    for (const text of ['commit 3f9a1c0b7e2d4f6a8b0c1d2e3f4a5b6c7d8e9f01', '123e4567-e89b-12d3-a456-426614174000', 'sk-short', 'task-ant-x', 'risk-assessment-for-the-whole-project-plan'])
       expect([text, detect(text)]).toEqual([text, []])
   })
 })
