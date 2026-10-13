@@ -34,7 +34,9 @@ describe('rewrite', () => {
   })
 
   test('powershell: dot-sources the shadow, original command intact at the end', () => {
-    expect(rewrite('del a', 'powershell', 'C:/m/lixeira/hooks')).toBe(`. 'C:/m/lixeira/hooks/remove-item.ps1'; del a`)
+    expect(rewrite('del a', 'powershell', 'C:/m/lixeira/hooks')).toBe(
+      `try { . 'C:/m/lixeira/hooks/remove-item.ps1' } catch { throw 'lixeira: a sombra nao carregou; nada foi apagado' }; del a`,
+    )
   })
 })
 
@@ -60,7 +62,8 @@ test('rm and Remove-Item reach the shell rewritten, original at the end', async 
   await $.tool.call({ tool: 'PowerShell', command: 'del a.txt' } as never)
   expect(ran[0]!.startsWith('rm() { powershell.exe')).toBe(true)
   expect(ran[0]!.endsWith('/hooks/lixeira.ps1\' "$@"; }; rm -rf dist')).toBe(true)
-  expect(ran[1]!.endsWith("/hooks/remove-item.ps1'; del a.txt")).toBe(true)
+  expect(ran[1]!.startsWith("try { . '")).toBe(true)
+  expect(ran[1]!.endsWith("/hooks/remove-item.ps1' } catch { throw 'lixeira: a sombra nao carregou; nada foi apagado' }; del a.txt")).toBe(true)
 })
 
 test('a failure after the rewritten command ran never runs the original', async ($, on) => {

@@ -21,7 +21,7 @@ export type Risk =
   | { kind: 'secret-commit'; label: string; args: string[]; dir: Dir }
 
 const EXPLAIN: Record<Risk['kind'], string> = {
-  rm: 'Apaga arquivos ou pastas com tudo dentro. Com o mod lixeira ligado vão para a Lixeira do Windows; sem ele, não tem Ctrl+Z.',
+  rm: 'Apaga arquivos ou pastas. Com o mod lixeira ligado, o rm simples manda para a Lixeira do Windows; /usr/bin/rm, command/env/exec rm e xargs rm apagam de vez, sem Ctrl+Z.',
   'git-reset': 'Joga fora tudo que foi alterado e ainda não virou commit. O git não guarda cópia disso.',
   'git-clean': 'Apaga arquivos que o git nunca registrou (os novos). Como não estão no histórico, somem de vez.',
   'git-push-force': 'Reescreve o histórico no GitHub. Commits que só existem lá podem desaparecer.',

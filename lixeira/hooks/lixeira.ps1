@@ -21,12 +21,16 @@ foreach ($p in $paths) {
   if ($q -match '^[a-zA-Z]:$') { $q += '\' }
   try {
     # Always FullName: in-process, .NET's current folder is not PowerShell's location.
-    $items = @(if ($q -and (Test-Path -LiteralPath $q)) { Get-Item -LiteralPath $q -Force } elseif ($q -match '[*?]') { Get-Item -Path $q -Force -ErrorAction SilentlyContinue })
+    # Literal only: Bash already expanded its globs, and one it left unmatched must not match anything here.
+    $items = @(if ($q -and (Test-Path -LiteralPath $q)) { Get-Item -LiteralPath $q -Force })
   } catch { Fail $p $_.Exception.Message; continue }
   if (-not $items.Count) { if (-not $force) { Fail $p 'No such file or directory' }; continue }
   foreach ($i in $items) {
     $link = [bool]($i.Attributes -band [IO.FileAttributes]::ReparsePoint)
     if ($i.PSIsContainer -and -not $link -and -not $recurse) { Fail $p 'Is a directory'; continue }
+    # Without a Recycle Bin (network, removable) the shell deletes for good, silently: refuse instead.
+    $root = [IO.Path]::GetPathRoot($i.FullName)
+    if ($root.StartsWith('\\') -or ([IO.DriveInfo]$root).DriveType -ne 'Fixed') { Fail $p 'drive sem Lixeira; nada foi apagado'; continue }
     try {
       if ($i.PSIsContainer) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($i.FullName, 'OnlyErrorDialogs', 'SendToRecycleBin') }
       else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($i.FullName, 'OnlyErrorDialogs', 'SendToRecycleBin') }

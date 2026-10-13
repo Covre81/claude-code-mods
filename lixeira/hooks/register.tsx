@@ -25,7 +25,8 @@ export function hasDelete(command: string, shell: Shell): boolean {
 
 /** The command with the delete shadowed by the mod's scripts in `hooks` (a folder without single quotes). */
 export function rewrite(command: string, shell: Shell, hooks: string): string {
-  if (shell === 'powershell') return `. '${hooks}/remove-item.ps1'; ${command}`
+  // A shadow that fails to load (moved, ExecutionPolicy) stops the line instead of letting the real Remove-Item run.
+  if (shell === 'powershell') return `try { . '${hooks}/remove-item.ps1' } catch { throw 'lixeira: a sombra nao carregou; nada foi apagado' }; ${command}`
   return `rm() { powershell.exe -NoProfile -NonInteractive -File '${hooks}/lixeira.ps1' "$@"; }; ${command}`
 }
 
