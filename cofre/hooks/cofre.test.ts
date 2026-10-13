@@ -85,3 +85,44 @@ describe('secretReadTarget', () => {
       expect([c, secretReadTarget(c)]).toEqual([c, null])
   })
 })
+
+function world(on: Parameters<Parameters<typeof test>[1]>[1]) {
+  const ran: string[] = []
+  on('fs.list', () => ({ value: [{ name: '.env', kind: 'file', size: 80 }, { name: '.env.example', kind: 'file', size: 10 }] }) as never)
+  on('fs.read', () => ({ value: ENV }) as never)
+  on('tool.call', (_$, e) => {
+    const tool = (e as { tool: string }).tool
+    ran.push(tool)
+    return { result: tool === 'Read' ? { type: 'text', file: { filePath: '.env', content: ENV } } : { stdout: `valor ${VAL} e ${FAKE.github}`, stderr: '' } } as never
+  })
+  return ran
+}
+
+test('Read of .env shows names with masked values and no raw text field', async ($, on) => {
+  world(on)
+  const res = (await $.tool.call({ tool: 'Read', file_path: '.env' } as never)) as { result?: unknown; text?: string }
+  const json = JSON.stringify(res.result)
+  expect(json.includes('OPENAI_API_KEY=••••')).toBe(true)
+  expect(json.includes('PORT=3000')).toBe(true)
+  expect(json.includes(VAL)).toBe(false)
+  expect(res.text).toBe(undefined)
+})
+
+test('shell reads, key files, grep on secrets and @mentions are refused', async ($, on) => {
+  const ran = world(on)
+  on('prompt.mention', () => ({ type: null }) as never)
+  const cat = (await $.tool.call({ tool: 'Bash', command: 'cat .env' } as never)) as { deny?: string }
+  expect(String(cat.deny).includes('OPENAI_API_KEY')).toBe(true)
+  expect(String(cat.deny).includes(VAL)).toBe(false)
+  expect(typeof ((await $.tool.call({ tool: 'Read', file_path: 'C:/x/id_rsa' } as never)) as { deny?: string }).deny).toBe('string')
+  expect(typeof ((await $.tool.call({ tool: 'Grep', pattern: 'KEY', path: '.env' } as never)) as { deny?: string }).deny).toBe('string')
+  expect(ran).toEqual([])
+  const mention = (await $.prompt.mention({ mention: '@.env', path: '.env' } as never)) as { deny?: string }
+  expect(typeof mention.deny).toBe('string')
+})
+
+test('shell output carrying a secret comes back masked', async ($, on) => {
+  world(on)
+  const res = (await $.tool.call({ tool: 'PowerShell', command: 'echo $env:X' } as never)) as { result?: { stdout: string } }
+  expect(res.result?.stdout).toBe('valor •••• e ••••')
+})
