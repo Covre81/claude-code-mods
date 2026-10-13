@@ -1,3 +1,4 @@
+import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { detect, ensureGitignore, envNames, envValues, isSecretFile, maskDeep, secretReadTarget, upsertEnv } from './secrets'
@@ -86,7 +87,7 @@ describe('secretReadTarget', () => {
   })
 })
 
-function world(on: Parameters<Parameters<typeof test>[1]>[1]) {
+function world(on: On) {
   const ran: string[] = []
   on('fs.list', () => ({ value: [{ name: '.env', kind: 'file', size: 80 }, { name: '.env.example', kind: 'file', size: 10 }] }) as never)
   on('fs.read', () => ({ value: ENV }) as never)
@@ -194,4 +195,42 @@ test('terminal: /chave aborts without writing when an existing .env cannot be re
   expect(writes).toEqual([])
   expect(out.includes('não gravada')).toBe(true)
   expect(out.includes(secret)).toBe(false)
+})
+
+test('a symlinked .env (kind other) still feeds the mask', async ($, on) => {
+  on('fs.list', () => ({ value: [{ name: '.env', kind: 'other', size: 0 }] }) as never)
+  on('fs.read', () => ({ value: ENV }) as never)
+  on('tool.call', () => ({ result: { stdout: `v ${VAL}`, stderr: '' } }) as never)
+  const res = (await $.tool.call({ tool: 'Bash', command: 'echo hi' } as never)) as { result?: { stdout: string } }
+  expect(res.result?.stdout).toBe('v ••••')
+})
+
+test('an error with no result but a secret in text is withheld', async ($, on) => {
+  on('fs.list', () => ({ value: [{ name: '.env', kind: 'file', size: 80 }] }) as never)
+  on('fs.read', () => ({ value: ENV }) as never)
+  let out: object = { result: undefined, isError: true, text: `boom ${VAL}` }
+  on('tool.call', () => out as never)
+  const bad = (await $.tool.call({ tool: 'Bash', command: 'false' } as never)) as { deny?: string; text?: string }
+  expect(typeof bad.deny).toBe('string')
+  expect(JSON.stringify(bad).includes(VAL)).toBe(false)
+  out = { result: undefined, isError: true, text: 'boom' }
+  const ok = (await $.tool.call({ tool: 'Bash', command: 'false' } as never)) as { deny?: string; text?: string }
+  expect(ok.text).toBe('boom')
+})
+
+test('Write/Edit/MultiEdit of a secret file carrying the mask are denied; clean edits run', async ($, on) => {
+  const ran = world(on)
+  const call = (c: object) => $.tool.call(c as never) as Promise<{ deny?: string }>
+  for (const c of [
+    { tool: 'Write', file_path: '.env', content: 'A=••••\n' },
+    { tool: 'Edit', file_path: 'app/.env.local', old_string: 'x', new_string: 'A=••••' },
+    { tool: 'MultiEdit', file_path: '.env', edits: [{ old_string: 'x', new_string: 'ok' }, { old_string: 'y', new_string: 'B=••••' }] },
+  ]) {
+    const res = await call(c)
+    expect([c.tool, String(res.deny).includes('/chave')]).toEqual([c.tool, true])
+  }
+  expect(ran).toEqual([])
+  expect((await call({ tool: 'Edit', file_path: '.env', old_string: 'x', new_string: 'PORT=3000' })).deny).toBe(undefined)
+  expect((await call({ tool: 'Write', file_path: 'README.md', content: '••••' })).deny).toBe(undefined)
+  expect(ran).toEqual(['Edit', 'Write'])
 })

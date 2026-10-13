@@ -1,21 +1,31 @@
 import type { EngineInterface, Register } from 'claude-code'
 
-import { detect, ensureGitignore, envNames, envValues, isEnvFile, isSecretFile, maskDeep, secretReadTarget, upsertEnv } from './secrets'
+import { detect, ensureGitignore, envNames, envValues, isEnvFile, isSecretFile, MASK, maskDeep, maskText, secretReadTarget, upsertEnv } from './secrets'
 
 type Call = Record<string, unknown> & { tool?: unknown }
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
 /** Values of the session folder's .env files, plus the one being read. ponytail: reread per call, no cache; .env files are tiny. */
 async function secretValues($: EngineInterface, extra?: string): Promise<string[]> {
-  const local = (await $.fs.list().catch(() => [])).filter(f => f.kind === 'file' && isEnvFile(f.name)).map(f => f.name)
+  const local = (await $.fs.list().catch(() => [])).filter(f => f.kind !== 'dir' && isEnvFile(f.name)).map(f => f.name)
   const paths = extra && !local.includes(extra) ? [...local, extra] : local
   const texts = await Promise.all(paths.map(p => $.fs.read(p).catch(() => '')))
   return texts.flatMap(t => envValues(String(t)))
 }
 
+const EDITORS = ['Edit', 'Write', 'MultiEdit']
+
 /** Why this call must not run, or null. A Read of .env runs and gets masked instead. */
 async function refusal($: EngineInterface, call: Call): Promise<string | null> {
   const tool = str(call.tool)
+  if (EDITORS.includes(tool)) {
+    const edits = Array.isArray(call.edits) ? (call.edits as Call[]) : []
+    const written = [str(call.content), str(call.new_string), ...edits.map(x => str(x.new_string))]
+    const file = str(call.file_path)
+    return isSecretFile(file) && written.some(w => w.includes(MASK))
+      ? `Gravação em ${file} negada: o texto contém ${MASK}, que é a máscara do cofre, não o valor real, e sobrescreveria a chave. Use /chave NOME para gravar o valor.`
+      : null
+  }
   const target =
     tool === 'Read' ? str(call.file_path) : tool === 'Grep' ? ([str(call.path), str(call.glob)].find(isSecretFile) ?? '') : (secretReadTarget(str(call.command)) ?? '')
   if (!target || !isSecretFile(target)) return null
@@ -33,7 +43,7 @@ let pending: { name: string; value: string | null } | null = null
 
 async function save($: EngineInterface, name: string, value: string): Promise<string> {
   // Only a file that is not listed counts as empty; a listed file that fails to read aborts before any write, so a lock or EACCES can't wipe the user's other secrets.
-  const listed = new Set((await $.fs.list()).filter(f => f.kind === 'file').map(f => f.name))
+  const listed = new Set((await $.fs.list()).filter(f => f.kind !== 'dir').map(f => f.name))
   const readOrEmpty = async (file: string) => (listed.has(file) ? String(await $.fs.read(file)) : '')
   let ignore: string, env: string
   try {
@@ -49,16 +59,21 @@ async function save($: EngineInterface, name: string, value: string): Promise<st
 }
 
 export const register: Register = on => {
-  on('tool.call', { tool: ['Read', 'Grep', 'Bash', 'PowerShell'] }, async ($, e, next) => {
+  on('tool.call', { tool: /^(Read|Grep|Bash|PowerShell|Edit|Write|MultiEdit)$/ }, async ($, e, next) => {
     const call = e as unknown as Call
     const why = await refusal($, call)
     if (why) return { deny: why }
     const r = await next(e)
-    if (r.deny !== undefined || r.result === undefined) return r
-    const extra = str(call.tool) === 'Read' && isEnvFile(str(call.file_path)) ? str(call.file_path) : undefined
-    const masked = maskDeep(r.result, await secretValues($, extra))
+    if (r.deny !== undefined) return r
+    const tool = str(call.tool)
+    const extra = tool === 'Read' && isEnvFile(str(call.file_path)) ? str(call.file_path) : EDITORS.includes(tool) ? str(call.file_path) : undefined
+    const values = await secretValues($, extra || undefined)
+    const text = r.text ?? ''
+    const textClean = maskText(text, values) === text
+    if (r.result === undefined) return textClean ? r : { deny: 'saída retida pelo cofre: continha segredo' }
+    const masked = maskDeep(r.result, values)
     // A hook's own result carries no `text`/`ref`: spreading r would hand the model the raw text core rendered.
-    return JSON.stringify(masked) === JSON.stringify(r.result) ? r : ({ result: masked, context: r.context, isError: r.isError } as typeof r)
+    return textClean && JSON.stringify(masked) === JSON.stringify(r.result) ? r : ({ result: masked, context: r.context, isError: r.isError } as typeof r)
   }).catch(() => ({ deny: 'O cofre falhou ao conferir esta chamada e reteve o resultado por segurança.' }))
 
   on('prompt.mention', ($, e, next) => (isSecretFile(e.path) ? { deny: 'arquivo de segredo: o cofre não anexa o conteúdo' } : next(e))).catch(() => ({
@@ -104,7 +119,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     const p = pending
-    if (e.requestId !== PANE || !p) return next(e)
+    if (e.requestId !== PANE || !p || e.surface !== 'terminal') return next(e)
     const { Box, Input, Text } = $.ui.resolve(e)
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
