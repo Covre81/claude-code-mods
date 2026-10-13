@@ -18,6 +18,7 @@ export type Risk =
   | { kind: 'rm'; label: string; targets: string[]; dir: Dir }
   | { kind: 'git-reset' | 'git-clean' | 'git-push-force' | 'git-checkout'; label: string; args: string[]; dir: Dir }
   | { kind: 'deps'; label: string; manager: 'npm' | 'pip'; packages: string[]; dir: Dir }
+  | { kind: 'secret-commit'; label: string; args: string[]; dir: Dir }
 
 const EXPLAIN: Record<Risk['kind'], string> = {
   rm: 'Apaga arquivos ou pastas direto, sem passar pela lixeira. Não tem Ctrl+Z.',
@@ -25,6 +26,7 @@ const EXPLAIN: Record<Risk['kind'], string> = {
   'git-clean': 'Apaga arquivos que o git nunca registrou (os novos). Como não estão no histórico, somem de vez.',
   'git-push-force': 'Reescreve o histórico no GitHub. Commits que só existem lá podem desaparecer.',
   'git-checkout': 'Descarta as alterações ainda não commitadas de todos os arquivos.',
+  'secret-commit': 'Coloca um arquivo de segredo no histórico do git. Mesmo apagado depois, continua nos commits antigos.',
   deps: 'Instala código de terceiros no projeto. Ele passa a rodar na sua máquina e dentro do app: vale ver se é conhecido e mantido.',
 }
 
@@ -46,8 +48,8 @@ const PREFIXES = new Set(['sudo', 'command', 'exec', 'env', 'nohup', 'time', 'th
 const NODE_ADD: Record<string, readonly string[]> = { npm: ['install', 'i', 'add'], pnpm: ['add', 'install', 'i'], yarn: ['add'], bun: ['add', 'install', 'i'] }
 const PIP_VALUE_FLAGS = new Set(['-r', '--requirement', '-e', '--editable', '-c', '--constraint', '-i', '--index-url', '--extra-index-url', '-t', '--target'])
 
-/** The first risky segment of a shell command, or null. A bare `npm install` / `pip install -r` adds nothing new and passes. */
-export function classify(command: string): Risk | null {
+/** Each simple command of a shell line with the folder it runs in (after any cd). */
+function* commands(command: string): Generator<{ cmd: string; args: string[]; dir: Dir }> {
   let dir: Dir = null
   for (const seg of command.split(/&&|\|\||;|\||\n/)) {
     const words = tokenize(seg.trim().replace(/^[({]+\s*/, '').replace(/\s*[)}]+$/, ''))
@@ -59,8 +61,35 @@ export function classify(command: string): Risk | null {
       dir = joinDir(dir, args[0])
       continue
     }
+    yield { cmd, args, dir }
+  }
+}
+
+/** The first risky segment of a shell command, or null. A bare `npm install` / `pip install -r` adds nothing new and passes. */
+export function classify(command: string): Risk | null {
+  for (const { cmd, args, dir } of commands(command)) {
     const risk = classifyCmd(cmd, args, dir)
     if (risk) return risk
+  }
+  return null
+}
+
+function gitParts(args: string[], dir: Dir) {
+  let i = 0
+  let gitDir = dir
+  while (i < args.length && args[i]!.startsWith('-')) {
+    if (args[i] === '-C') gitDir = joinDir(gitDir, args[i + 1])
+    i += args[i] === '-C' || args[i] === '-c' ? 2 : 1
+  }
+  return { sub: args[i], rest: args.slice(i + 1), gitDir }
+}
+
+/** A git add/commit that may carry a secret file; only git itself can tell, so register.tsx asks it before holding. */
+export function commitCandidate(command: string): Extract<Risk, { kind: 'secret-commit' }> | null {
+  for (const { cmd, args, dir } of commands(command)) {
+    if (cmd !== 'git') continue
+    const { sub, rest, gitDir } = gitParts(args, dir)
+    if (sub === 'add' || sub === 'commit') return { kind: 'secret-commit', label: `git ${sub}`, args: rest, dir: gitDir }
   }
   return null
 }
@@ -74,14 +103,7 @@ function classifyCmd(cmd: string, args: string[], dir: Dir): Risk | null {
     return isRecursive || isForce ? { kind: 'rm', label: `rm ${flags.join(' ')}`, targets: args.filter(a => !a.startsWith('-')), dir } : null
   }
   if (cmd === 'git') {
-    let i = 0
-    let gitDir = dir
-    while (i < args.length && args[i]!.startsWith('-')) {
-      if (args[i] === '-C') gitDir = joinDir(gitDir, args[i + 1])
-      i += args[i] === '-C' || args[i] === '-c' ? 2 : 1
-    }
-    const sub = args[i]
-    const rest = args.slice(i + 1)
+    const { sub, rest, gitDir } = gitParts(args, dir)
     const short = rest.filter(a => /^-[^-]/.test(a)).join('')
     if (sub === 'reset' && rest.includes('--hard')) return { kind: 'git-reset', label: 'git reset --hard', args: rest, dir: gitDir }
     // Without -f git refuses to clean (clean.requireForce), and -n is the dry run.
@@ -163,6 +185,27 @@ async function resolveDir($: EngineInterface, base: string, dir: Dir): Promise<s
 
 async function git($: EngineInterface, cwd: string, args: string[]) {
   return $.process.run(['git', ...args], { cwd, timeoutMs: 15000 })
+}
+
+// ponytail: copy of cofre/hooks/secrets.ts isSecretFile; plugins load in isolation, a ../../cofre import leaves the plugin root.
+function isSecretFile(path: string): boolean {
+  const base = (path.replace(/["']/g, '').split(/[\\/]/).pop() ?? '').toLowerCase()
+  if (/^\.env(\..+)?$/.test(base)) return !/\.(example|sample|template)$/.test(base)
+  if (base.endsWith('.pub')) return false
+  return /\.(pem|key)$/.test(base) || /^credentials.*\.json$/.test(base) || /^id_(rsa|ed25519)/.test(base)
+}
+
+/** Secret files this add/commit would put in history: `git add -n` for add, the index (+ worktree with -a) for commit. */
+async function stagedSecrets($: EngineInterface, risk: Extract<Risk, { kind: 'secret-commit' }>, cwd: string): Promise<string[]> {
+  const out = async (args: string[]) => (await git($, cwd, args)).stdout.split('\n')
+  const files =
+    risk.label === 'git add'
+      ? (await out(['add', '-n', ...risk.args])).map(l => /^add '(.+)'$/.exec(l.trim())?.[1] ?? '')
+      : [
+          ...(await out(['diff', '--cached', '--name-only'])),
+          ...(risk.args.includes('--all') || risk.args.some(a => /^-[^-]*a/.test(a)) ? await out(['diff', '--name-only']) : []),
+        ]
+  return [...new Set(files.map(f => f.trim()).filter(f => f && isSecretFile(f)))]
 }
 
 async function measureRm($: EngineInterface, targets: string[], cwd: string): Promise<Measured> {
@@ -260,6 +303,14 @@ async function lookup($: EngineInterface, manager: 'npm' | 'pip', spec: string):
 
 async function measure($: EngineInterface, risk: Risk, cwd: string): Promise<Measured> {
   try {
+    if (risk.kind === 'secret-commit') {
+      const files = await stagedSecrets($, risk, cwd)
+      return {
+        summary: `colocar ${plural(files.length, 'arquivo de segredo', 'arquivos de segredo')} no git`,
+        lines: files.slice(0, LIST_MAX).map(f => `⚠ ${f}`),
+        note: 'Tire do commit com git restore --staged <arquivo> e confira se o .gitignore cobre o arquivo.',
+      }
+    }
     if (risk.kind === 'rm') return await measureRm($, risk.targets, cwd)
     if (risk.kind === 'deps') {
       const lines = await Promise.all(risk.packages.slice(0, 3).map(p => lookup($, risk.manager, p)))
@@ -330,19 +381,27 @@ async function hold($: EngineInterface, command: string, risk: Risk, signal: Abo
 export const register: Register = on => {
   // PowerShell runs the same git/npm/pip lines, so it goes through the same classifier.
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
-    let risk: Risk | null = null
+    const command = String(e.command ?? '')
+    let risks: Risk[] = []
     try {
-      risk = classify(String(e.command ?? ''))
+      risks = [commitCandidate(command), classify(command)].filter((r): r is Risk => r !== null)
     } catch {
-      risk = null // a classifier bug must never block every shell call
+      risks = [] // a classifier bug must never block every shell call
     }
-    if (!risk) return next(e)
-    const verdict = await hold($, String(e.command), risk, next.signal)
-    if (verdict.isOk) {
-      $.ui.toast('🛡 guarda: executando')
-      return next(e)
+    const candidate = risks.find(r => r.kind === 'secret-commit')
+    if (candidate?.kind === 'secret-commit') {
+      // Every add/commit is a candidate; hold only when git lists a secret file. A git failure lets it pass, as a classifier bug does.
+      const cwd = await resolveDir($, toWin(await $.session.cwd()), candidate.dir).catch(() => null)
+      const found = cwd === null ? [] : await stagedSecrets($, candidate, cwd).catch(() => [])
+      if (!found.length) risks = risks.filter(r => r !== candidate)
     }
-    return { deny: `O guarda segurou este comando e não o executou: ${verdict.why}. Ele iria ${verdict.summary}. Não tente de novo a menos que o usuário peça.` }
+    for (const risk of risks) {
+      const verdict = await hold($, command, risk, next.signal)
+      if (!verdict.isOk)
+        return { deny: `O guarda segurou este comando e não o executou: ${verdict.why}. Ele iria ${verdict.summary}. Não tente de novo a menos que o usuário peça.` }
+    }
+    if (risks.length) $.ui.toast('🛡 guarda: executando')
+    return next(e)
   })
 
   on('ui.close', ($, e, next) => {

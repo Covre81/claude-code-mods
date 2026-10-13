@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { classify, packageName } from './register'
+import { classify, commitCandidate, packageName } from './register'
 
 const kindOf = (cmd: string) => classify(cmd)?.kind ?? null
 
@@ -65,6 +65,50 @@ describe('classify', () => {
     expect(packageName('npm', 'github:user/repo')).toBe(null)
     expect(packageName('pip', 'requests==2.32.0')).toBe('requests')
   })
+})
+
+describe('commitCandidate', () => {
+  test('git add and commit are candidates, classify ignores them', () => {
+    expect(commitCandidate('git add .env')?.label).toBe('git add')
+    expect(commitCandidate('cd app && git -C sub commit -am "x"')?.dir).toBe('app/sub')
+    expect(commitCandidate('git status')).toBe(null)
+    expect(classify('git add . && git push --force')?.kind).toBe('git-push-force')
+  })
+})
+
+function gitAddWorld(on: Parameters<Parameters<typeof test>[1]>[1], stdout: string) {
+  let ran = false
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('ui.close', () => ({ value: undefined }) as never)
+  on('process.run', () => ({ value: { exitCode: 0, stdout, stderr: '' } }) as never)
+  on('session.cwd', () => ({ value: 'C:/Dev/app' }) as never)
+  on('fs.stat', () => ({ value: { kind: 'dir' } }) as never)
+  on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
+  on('tool.call', () => {
+    ran = true
+    return { result: 'ran' } as never
+  })
+  return () => ran
+}
+
+test('terminal: git add of a .env is held as secret-commit', async ($, on) => {
+  const clock = mock.clock(on)
+  const ran = gitAddWorld(on, "add '.env'\nadd 'src/a.ts'\n")
+  const call = $.tool.call({ tool: 'Bash', command: 'git add -A' } as never)
+  await clock.settle()
+  const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
+  expect(JSON.stringify(await pane.findAll({ type: 'Text' })).includes('.env')).toBe(true)
+  await pane.press({ key: 'cancel' })
+  await clock.advance(300)
+  const res = (await call) as { deny?: string; text?: string }
+  expect(ran()).toBe(false)
+  expect(String(res.deny ?? res.text).includes('arquivo de segredo')).toBe(true)
+})
+
+test('terminal: git add without secrets passes untouched', async ($, on) => {
+  const ran = gitAddWorld(on, "add 'src/a.ts'\n")
+  await $.tool.call({ tool: 'Bash', command: 'git add src/' } as never)
+  expect(ran()).toBe(true)
 })
 
 test('terminal: a risky PowerShell command waits for Cancelar and is denied', async ($, on) => {
