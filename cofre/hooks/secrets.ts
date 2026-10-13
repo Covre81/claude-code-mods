@@ -35,8 +35,11 @@ const ENV_LINE = /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*)$/
 
 function unquote(raw: string): string {
   const v = raw.trim()
-  const q = /^(["'])(.*)\1$/.exec(v)
-  if (q) return q[1] === '"' ? q[2]!.replace(/\\(["\\])/g, '$1') : q[2]!
+  // Read up to the closing quote and ignore what follows, so `"x" # note` still yields x.
+  const dq = /^"((?:[^"\\]|\\.)*)"/.exec(v)
+  if (dq) return dq[1]!.replace(/\\(["\\])/g, '$1')
+  const sq = /^'([^']*)'/.exec(v)
+  if (sq) return sq[1]!
   return v.replace(/\s+#.*$/, '')
 }
 

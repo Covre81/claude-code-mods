@@ -43,6 +43,11 @@ describe('.env', () => {
     expect(envValues(ENV)).toEqual([VAL, `${VAL} 2`])
   })
 
+  test('quoted value followed by a comment yields the bare value', () => {
+    const X = 'x'.repeat(12)
+    expect(envValues(`K1="${X}" # note\nK2='${X}' # note\n`)).toEqual([X, X])
+  })
+
   test('upsertEnv replaces or appends, quotes when needed, keeps $ literal', () => {
     expect(upsertEnv('A=1\nB=2\n', 'B', 'novo')).toBe('A=1\nB=novo\n')
     expect(upsertEnv('A=1', 'C', 'tem espaço')).toBe('A=1\nC="tem espaço"\n')
