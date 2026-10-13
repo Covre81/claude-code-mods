@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 
-import { envNames, envValues, isEnvFile, isSecretFile, maskDeep, secretReadTarget } from './secrets'
+import { detect, envNames, envValues, isEnvFile, isSecretFile, maskDeep, secretReadTarget } from './secrets'
 
 type Call = Record<string, unknown> & { tool?: unknown }
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -40,4 +40,11 @@ export const register: Register = on => {
   on('prompt.mention', ($, e, next) => (isSecretFile(e.path) ? { deny: 'arquivo de segredo: o cofre não anexa o conteúdo' } : next(e))).catch(() => ({
     deny: 'o cofre falhou ao conferir a menção',
   }))
+
+  on('prompt.submit', ($, e, next) => {
+    if (/^#ok\b/.test(e.text)) return next({ ...e, text: e.text.replace(/^#ok\s*/, '') })
+    const hit = detect(e.text)[0]
+    if (!hit) return next(e)
+    return { drop: `🔐 Isso parece uma chave ${hit.kind} (${hit.sample}). Use /chave NOME para gravar no .env sem passar pelo chat. Para enviar mesmo assim, comece a mensagem com #ok` }
+  }).catch(($, e, next) => (next.called ? next(e) : { drop: 'o cofre falhou ao conferir o prompt' })) // fail closed: a key must not reach the model unchecked
 }

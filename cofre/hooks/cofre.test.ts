@@ -121,6 +121,17 @@ test('shell reads, key files, grep on secrets and @mentions are refused', async 
   expect(typeof mention.deny).toBe('string')
 })
 
+test('a pasted key is held; #ok sends it without the prefix', async ($, on) => {
+  on('prompt.submit', (_$, e) => ({ text: (e as { text: string }).text }) as never)
+  const held = (await $.prompt.submit({ text: `minha chave ${FAKE.google}`, wait: false, origin: { kind: 'composer' } } as never)) as { drop?: string }
+  expect(String(held.drop).includes('google')).toBe(true)
+  expect(String(held.drop).includes(FAKE.google)).toBe(false)
+  const sent = (await $.prompt.submit({ text: `#ok minha chave ${FAKE.google}`, wait: false, origin: { kind: 'composer' } } as never)) as { text?: string }
+  expect(sent.text).toBe(`minha chave ${FAKE.google}`)
+  const plain = (await $.prompt.submit({ text: 'oi', wait: false, origin: { kind: 'composer' } } as never)) as { text?: string }
+  expect(plain.text).toBe('oi')
+})
+
 test('shell output carrying a secret comes back masked', async ($, on) => {
   world(on)
   const res = (await $.tool.call({ tool: 'PowerShell', command: 'echo $env:X' } as never)) as { result?: { stdout: string } }
