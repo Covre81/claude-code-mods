@@ -67,7 +67,13 @@ devolveu mantém o formato que o core já aceitou.
      (`.env`, `.env*`, `*.env`), acrescenta `.env`.
   3. `.env` da pasta atual: substitui a linha `NOME=...` se existir, senão acrescenta.
      Valor com espaço, `#` ou aspas é gravado entre aspas duplas, escapando `"` e `\`.
-  4. fecha a pane; toast `🔐 NOME gravada no .env` (+ `· .gitignore atualizado` se mudou).
+  4. fecha a pane; o comando responde `🔐 NOME gravada no .env` (+ `· .gitignore
+     atualizado` se mudou).
+- Fluxo: o `command.run` abre a pane e espera o valor (mesmo laço de espera do `hold`
+  do guarda, 10 min); o `onSubmit` só guarda o valor numa variável do módulo. Esc
+  (`ui.close`) cancela.
+- Limite: um gancho `ui.input` de outro plugin vê o que é digitado (index.d.ts:13952).
+  Nenhum mod deste repositório usa `ui.input`.
 - O texto do comando devolvido ao transcript cita só o nome, nunca o valor.
 - Limite conhecido: `Input` não tem modo senha; o valor aparece na tela durante a
   colagem, mas não entra no transcript nem chega ao modelo.
@@ -90,11 +96,12 @@ devolveu mantém o formato que o core já aceitou.
 ### 4. Máscara nas saídas (`tool.call`, depois de `next(e)`)
 
 - Ferramentas: `Bash`, `PowerShell`, `Read`, `Grep`.
-- Valores a mascarar: os do `.env*` da pasta da sessão com 8+ caracteres (cache por
-  `mtime`) + tudo que `detect` acha.
+- Valores a mascarar: os do `.env*` da pasta da sessão com 8+ caracteres (relidos a
+  cada chamada; `ponytail:` sem cache, `.env` é pequeno) + tudo que `detect` acha.
 - Só age se algum segredo aparece; devolve `{ result: maskDeep(r.result), context:
   r.context }`. Sem segredo, devolve `r` intacto (core reaproveita `ref`).
-- Erro no gancho → `.catch` devolve o resultado de `next` se já houver, senão nega.
+- Erro no gancho → `.catch` nega (fail closed): o modelo lê "ran, and a plugin
+  withheld its result". Devolver o resultado sem máscara seria vazar justo no erro.
 - Limite conhecido: valor transformado (base64, URL-encoded) não é reconhecido.
 
 ### 5. Segredo colado no prompt (`prompt.submit`)
@@ -113,6 +120,10 @@ devolveu mantém o formato que o core já aceitou.
   risco.
 - `git commit` (inclusive `-a`): `git diff --cached --name-only` (+ `git diff
   --name-only` quando `-a`); arquivo secreto → risco.
+- Fica fora do `classify`, que devolve só o primeiro risco da linha: `git add . && git
+  push --force` sem segredo deixaria o push passar. `commitCandidate(command)` separado;
+  o gancho segura cada risco em sequência e descarta o candidato quando o git não lista
+  segredo (falha do git → deixa passar, como bug do classificador).
 - Painel do guarda lista os arquivos; texto em `EXPLAIN`: "Coloca um arquivo de
   segredo no histórico do git. Mesmo apagado depois, continua nos commits antigos."
 - O `guarda` tem sua própria cópia de `isSecretFile` (comentário `ponytail:` apontando
