@@ -27,6 +27,8 @@ function Remove-Item {
         if ($i.PSProvider.Name -ne 'FileSystem') {
           # Env:, HKCU:, Function: have no Recycle Bin: the real cmdlet removes them.
           Microsoft.PowerShell.Management\Remove-Item -LiteralPath $i.PSPath -Recurse:$Recurse -Force:$Force -Confirm:$false
+        } elseif (-not $Force -and ($i.Attributes -band ([IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::System))) {
+          Write-Error "lixeira: '$p' é oculto, só-leitura ou de sistema; use -Force. Nada foi apagado."   # the real cmdlet refuses too
         } elseif ($i.PSIsContainer -and -not $Recurse -and -not ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -and (Get-ChildItem -LiteralPath $i.FullName -Force | Select-Object -First 1)) {
           Write-Error "lixeira: '$p' não está vazia; use -Recurse. Nada foi apagado."
         } else { $files += $i.FullName }
