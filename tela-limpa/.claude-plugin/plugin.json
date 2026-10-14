@@ -1,0 +1,6 @@
+{
+  "name": "tela-limpa",
+  "version": "0.1.0",
+  "description": "Oculta logs detalhados de chamadas de ferramentas e diffs extensos, mantendo resumos curtos por etapa; nunca oculta erros, perguntas do sistema ou respostas finais.",
+  "types": "./types/index.d.ts"
+}
