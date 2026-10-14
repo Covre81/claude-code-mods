@@ -1,0 +1,6 @@
+{
+  "name": "meus-mods",
+  "version": "0.1.0",
+  "description": "Painel central para a Radio Lo-Fi e a Tela Limpa: faixa fixa acima do prompt com atalhos e o comando /mods com o estado de cada mod.",
+  "dependencies": ["lowfi-radio", "tela-limpa"]
+}
