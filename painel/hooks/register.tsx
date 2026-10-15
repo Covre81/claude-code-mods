@@ -19,6 +19,7 @@ const activity = atom({ plugin: 'painel', key: 'activity' } as const, [])
 const turnStat = atom({ plugin: 'painel', key: 'turn' } as const, null)
 const cost = atom({ plugin: 'painel', key: 'cost' } as const, null)
 const limits = atom({ plugin: 'painel', key: 'limits' } as const, [])
+const isEnabledRef = atom({ plugin: 'painel', key: 'isEnabled' } as const, true)
 
 /** Byte-identical every turn: anything that varies here would break the prompt cache through jev-router. */
 export const JUSTIFY = {
@@ -174,11 +175,21 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'replay', description: 'Mostra, passo a passo, o que o último turno mudou nos arquivos' })
     await $.command.register({ name: 'atividade', description: 'Linha do tempo das ferramentas do último turno, com tokens, custo e limites' })
+    await $.command.register({ name: 'painel', description: 'Liga/desliga a faixa de clima do contexto e a gravação de atividade.', argumentHint: 'on|off' })
     return next(e)
   })
 
   on('command.run', { command: 'replay' }, async $ => ({ text: (await openReplay($)) ? 'Replay aberto.' : 'O último turno não editou arquivos.' }))
   on('command.run', { command: 'atividade' }, async $ => ({ text: (await openActivity($)) ? 'Atividade aberta.' : 'Nenhum turno terminou ainda.' }))
+  on('command.run', { command: 'painel' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `painel esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /painel on · /painel off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `painel ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
 
   on('prompt.compose', async ($, e, next) => {
     const res = await next(e)
@@ -186,7 +197,7 @@ export const register: Register = on => {
   })
 
   on('tool.call', async ($, e, next) => {
-    if (e.agentId) return next(e)
+    if (e.agentId || !(await read($, isEnabledRef))) return next(e)
     const input = e as unknown as Record<string, unknown>
     const edits = e.tool === 'Edit' || e.tool === 'Write'
     // Read before next: after it, a Write has already replaced the old content.
@@ -205,7 +216,7 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId) return next(e)
+    if (e.agentId || !(await read($, isEnabledRef))) return next(e)
     const res = await next(e)
     const done = acts
     acts = []
@@ -234,7 +245,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.isWorking || e.props.hasSurvey) return next(e)
+    if (e.props.isWorking || e.props.hasSurvey || !(await read($, isEnabledRef))) return next(e)
     const pct = await read($, percent)
     const steps = await read($, replay)
     const t = await read($, turnStat)
