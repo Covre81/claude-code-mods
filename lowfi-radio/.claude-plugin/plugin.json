@@ -1,6 +1,0 @@
-{
-  "name": "lowfi-radio",
-  "version": "0.1.0",
-  "description": "Toca um stream de audio lo-fi em loop, com indicador na barra de status enquanto estiver tocando.",
-  "types": "./types/index.d.ts"
-}
