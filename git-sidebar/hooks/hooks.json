@@ -1,0 +1,4 @@
+{
+  "description": "git-sidebar: /git-sidebar opens a Pane listing worktrees and branches; ui.press on its rows runs /cd or git switch; turn.complete and /cd refresh it",
+  "modules": ["./register.tsx"]
+}
