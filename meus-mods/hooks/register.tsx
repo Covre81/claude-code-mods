@@ -2,6 +2,10 @@ import type { EngineInterface, Register } from 'claude-code'
 
 const PANEL_ID = 'meus-mods-panel'
 const BRAND = '#D97757'
+const BG = '#1c1310'
+const BG_ALT = '#241a15'
+const ON = '#8fbf7f'
+const OFF = '#6b6058'
 
 const cleanViewRef = { plugin: 'clean-view', key: 'isEnabled' } as const
 const cacheFrioRef = { plugin: 'cache-frio', key: 'isEnabled' } as const
@@ -95,31 +99,35 @@ export const register: Register = on => {
       void $.command.run({ command: row.command, args: row.isEnabled ? 'off' : 'on' })
     }
 
-    const renderRow = (row: Row) => (
-      <Box key={row.name} flexDirection="row" gap={1}>
+    const renderRow = (row: Row, i: number) => (
+      <Box key={row.name} flexDirection="row" gap={1} paddingX={1} backgroundColor={i % 2 ? BG_ALT : undefined}>
         <Text>{row.icon}</Text>
         <Box flexDirection="column" flexGrow={1}>
-          <Text bold color={row.isEnabled === false ? 'gray' : BRAND}>
-            {row.name}
-          </Text>
+          <Text bold>{row.name}</Text>
           <Text dimColor wrap="truncate-end">
             {row.description}
           </Text>
         </Box>
         {row.isEnabled === null ? (
-          <Text dimColor>sempre ativo</Text>
+          <Text color={ON}>sempre ativo</Text>
         ) : (
-          <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
-            {row.isEnabled ? 'desligar' : 'ligar'}
-          </Button>
+          <Box flexDirection="row" gap={1}>
+            <Text color={row.isEnabled ? ON : OFF}>{row.isEnabled ? '● ligado' : '○ desligado'}</Text>
+            <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
+              {row.isEnabled ? 'desligar' : 'ligar'}
+            </Button>
+          </Box>
         )}
       </Box>
     )
 
+    const toggleable = list.filter(r => r.isEnabled !== null)
+    const alwaysOn = list.filter(r => r.isEnabled === null)
+
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor={BRAND} paddingX={1} gap={1}>
-        <Box flexDirection="column">
-          <Text bold>
+      <Box flexDirection="column" borderStyle="round" borderColor={BRAND} backgroundColor={BG} paddingX={1} paddingY={0} gap={1}>
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold size="title">
             <Text color={BRAND}>✦</Text> Meus Mods
           </Text>
           <Text dimColor>
@@ -127,16 +135,20 @@ export const register: Register = on => {
           </Text>
         </Box>
 
-        <Box flexDirection="column">{list.filter(r => r.isEnabled !== null).map(renderRow)}</Box>
+        <Box flexDirection="column">{toggleable.map((row, i) => renderRow(row, i))}</Box>
 
         <Box flexDirection="column">
-          <Text dimColor>── sempre ativos ──</Text>
-          {list.filter(r => r.isEnabled === null).map(renderRow)}
+          <Text bold color={BRAND}>
+            {'  '}SEMPRE ATIVOS
+          </Text>
+          {alwaysOn.map((row, i) => renderRow(row, i))}
         </Box>
 
-        <Button key="panel-close" role="dismiss" plain onPress={() => $.ui.close({ id: PANEL_ID })}>
-          Fechar
-        </Button>
+        <Box paddingX={1}>
+          <Button key="panel-close" role="dismiss" onPress={() => $.ui.close({ id: PANEL_ID })}>
+            Fechar
+          </Button>
+        </Box>
       </Box>
     )
   })
