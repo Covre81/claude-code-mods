@@ -1,5 +1,6 @@
 {
   "name": "delegation-dock",
   "version": "0.1.0",
-  "description": "Status line entry listing agy/codex/ollama delegations in flight, and a warning when agy answers empty"
+  "description": "Status line entry listing agy/codex/ollama delegations in flight, and a warning when agy answers empty",
+  "types": "./types/index.d.ts"
 }
