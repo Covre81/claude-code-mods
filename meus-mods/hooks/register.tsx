@@ -2,10 +2,12 @@ import type { EngineInterface, Register } from 'claude-code'
 
 const PANEL_ID = 'meus-mods-panel'
 const BRAND = '#D97757'
-const BG = '#1c1310'
-const BG_ALT = '#241a15'
-const ON = '#8fbf7f'
-const OFF = '#6b6058'
+const BG = '#11141c'
+const BG_ALT = '#171b26'
+const TOGGLE_ON = '#4caf6e'
+const TOGGLE_OFF = '#3a3f4b'
+const TOGGLE_TEXT_ON = '#0b1d10'
+const TOGGLE_TEXT_OFF = '#9aa0ab'
 
 const cleanViewRef = { plugin: 'clean-view', key: 'isEnabled' } as const
 const cacheFrioRef = { plugin: 'cache-frio', key: 'isEnabled' } as const
@@ -19,9 +21,10 @@ const nextPromptsRef = { plugin: 'next-prompts', key: 'isEnabled' } as const
 type Row = {
   command: string | null
   icon: string
+  accent: string
   name: string
   description: string
-  isEnabled: boolean | null // null = sempre ativo, sem botão
+  isEnabled: boolean | null // null = sempre ativo, sem toggle
 }
 
 async function rows($: EngineInterface): Promise<Row[]> {
@@ -35,17 +38,17 @@ async function rows($: EngineInterface): Promise<Row[]> {
   const { value: nextPrompts = true } = await $.state.get(nextPromptsRef)
 
   return [
-    { command: 'clean-view', icon: '🧹', name: 'clean-view', description: 'Resume cada chamada de ferramenta numa linha', isEnabled: cleanView },
-    { command: 'cache-frio', icon: '🧊', name: 'cache-frio', description: 'Avisa antes de mandar um prompt caro com cache frio', isEnabled: cacheFrio },
-    { command: 'delegation-dock', icon: '🛰', name: 'delegation-dock', description: 'Status das delegações em voo (agy/codex/ollama)', isEnabled: delegationDock },
-    { command: 'memoria', icon: '🧠', name: 'memoria', description: 'Busca notas do ai-memory antes de cada prompt', isEnabled: memoria },
-    { command: 'painel', icon: '🌤', name: 'painel', description: 'Clima do contexto, replay de edições e atividade', isEnabled: painel },
-    { command: 'uso-vivo', icon: '📊', name: 'uso-vivo', description: 'Caixa de contexto e linha de uso (5h/7d, custo)', isEnabled: usoVivo },
-    { command: 'wait-quiz', icon: '🎴', name: 'wait-quiz', description: 'Quiz de estudo na faixa enquanto Claude trabalha', isEnabled: waitQuiz },
-    { command: 'next-prompts', icon: '💡', name: 'next-prompts', description: 'Sugestões de próximo passo acima do prompt', isEnabled: nextPrompts },
-    { command: null, icon: '🛡', name: 'guarda', description: 'Segura comando destrutivo e pede confirmação — sempre ativo', isEnabled: null },
-    { command: null, icon: '🔐', name: 'cofre', description: 'Mantém chave de API fora da conversa — sempre ativo', isEnabled: null },
-    { command: null, icon: '🗑', name: 'lixeira', description: 'Manda rm para a Lixeira do Windows — sempre ativo', isEnabled: null },
+    { command: 'clean-view', icon: '🧹', accent: '#5fd98a', name: 'clean-view', description: 'Resume cada chamada de ferramenta numa linha', isEnabled: cleanView },
+    { command: 'cache-frio', icon: '🧊', accent: '#5fb8d9', name: 'cache-frio', description: 'Avisa antes de mandar um prompt caro com cache frio', isEnabled: cacheFrio },
+    { command: 'delegation-dock', icon: '🛰', accent: '#c97fe0', name: 'delegation-dock', description: 'Status das delegações em voo (agy/codex/ollama)', isEnabled: delegationDock },
+    { command: 'memoria', icon: '🧠', accent: '#9b8cf0', name: 'memoria', description: 'Busca notas do ai-memory antes de cada prompt', isEnabled: memoria },
+    { command: 'painel', icon: '🌤', accent: '#4aa3df', name: 'painel', description: 'Clima do contexto, replay de edições e atividade', isEnabled: painel },
+    { command: 'uso-vivo', icon: '📊', accent: '#e0c84a', name: 'uso-vivo', description: 'Caixa de contexto e linha de uso (5h/7d, custo)', isEnabled: usoVivo },
+    { command: 'wait-quiz', icon: '🎴', accent: '#e8955c', name: 'wait-quiz', description: 'Quiz de estudo na faixa enquanto Claude trabalha', isEnabled: waitQuiz },
+    { command: 'next-prompts', icon: '💡', accent: '#f0d75c', name: 'next-prompts', description: 'Sugestões de próximo passo acima do prompt', isEnabled: nextPrompts },
+    { command: null, icon: '🛡', accent: '#e0c84a', name: 'guarda', description: 'Segura comando destrutivo e pede confirmação', isEnabled: null },
+    { command: null, icon: '🔐', accent: '#5fd98a', name: 'cofre', description: 'Mantém chave de API fora da conversa', isEnabled: null },
+    { command: null, icon: '🗑', accent: '#8a8f99', name: 'lixeira', description: 'Manda rm para a Lixeira do Windows', isEnabled: null },
   ]
 }
 
@@ -99,25 +102,32 @@ export const register: Register = on => {
       void $.command.run({ command: row.command, args: row.isEnabled ? 'off' : 'on' })
     }
 
+    // Botão com um filho Text de fundo colorido: a forma de desenhar um
+    // "pill" de toggle nesta API, já que um Button só aceita string/Text
+    // como filho (nenhum Box dentro dele).
+    const Toggle = (row: Row) => (
+      <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
+        <Text backgroundColor={row.isEnabled ? TOGGLE_ON : TOGGLE_OFF} color={row.isEnabled ? TOGGLE_TEXT_ON : TOGGLE_TEXT_OFF} bold>
+          {row.isEnabled ? '  ON  ' : '  OFF ' }
+        </Text>
+      </Button>
+    )
+
     const renderRow = (row: Row, i: number) => (
       <Box key={row.name} flexDirection="row" gap={1} paddingX={1} backgroundColor={i % 2 ? BG_ALT : undefined}>
+        <Text color={row.accent} bold>
+          ▍
+        </Text>
         <Text>{row.icon}</Text>
         <Box flexDirection="column" flexGrow={1}>
-          <Text bold>{row.name}</Text>
+          <Text bold color={row.accent}>
+            {row.name}
+          </Text>
           <Text dimColor wrap="truncate-end">
             {row.description}
           </Text>
         </Box>
-        {row.isEnabled === null ? (
-          <Text color={ON}>sempre ativo</Text>
-        ) : (
-          <Box flexDirection="row" gap={1}>
-            <Text color={row.isEnabled ? ON : OFF}>{row.isEnabled ? '● ligado' : '○ desligado'}</Text>
-            <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
-              {row.isEnabled ? 'desligar' : 'ligar'}
-            </Button>
-          </Box>
-        )}
+        {row.isEnabled === null ? <Text dimColor>sempre ativo</Text> : Toggle(row)}
       </Box>
     )
 
@@ -125,11 +135,14 @@ export const register: Register = on => {
     const alwaysOn = list.filter(r => r.isEnabled === null)
 
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor={BRAND} backgroundColor={BG} paddingX={1} paddingY={0} gap={1}>
-        <Box flexDirection="column" paddingX={1}>
-          <Text bold size="title">
-            <Text color={BRAND}>✦</Text> Meus Mods
+      <Box flexDirection="column" borderStyle="round" borderColor={BRAND} backgroundColor={BG} paddingY={0} gap={1}>
+        <Box flexDirection="row" backgroundColor={BRAND} paddingX={1}>
+          <Text bold color="#1a0f08">
+            ✦ MEUS MODS
           </Text>
+        </Box>
+
+        <Box flexDirection="column" paddingX={1}>
           <Text dimColor>
             {active} de {list.length} mods ativos
           </Text>
@@ -137,12 +150,12 @@ export const register: Register = on => {
 
         <Box flexDirection="column">{toggleable.map((row, i) => renderRow(row, i))}</Box>
 
-        <Box flexDirection="column">
-          <Text bold color={BRAND}>
-            {'  '}SEMPRE ATIVOS
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold dimColor>
+            sempre ativos
           </Text>
-          {alwaysOn.map((row, i) => renderRow(row, i))}
         </Box>
+        <Box flexDirection="column">{alwaysOn.map((row, i) => renderRow(row, i))}</Box>
 
         <Box paddingX={1}>
           <Button key="panel-close" role="dismiss" onPress={() => $.ui.close({ id: PANEL_ID })}>
