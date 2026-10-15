@@ -6,8 +6,9 @@ const BG = '#11141c'
 const BG_ALT = '#171b26'
 const TOGGLE_ON = '#4caf6e'
 const TOGGLE_OFF = '#3a3f4b'
-const TOGGLE_TEXT_ON = '#0b1d10'
-const TOGGLE_TEXT_OFF = '#9aa0ab'
+const TOGGLE_KNOB = '#f2efe9'
+const TOGGLE_KNOB_GLYPH = '●'
+const TOGGLE_TRACK_WIDTH = 7
 
 const cleanViewRef = { plugin: 'clean-view', key: 'isEnabled' } as const
 const cacheFrioRef = { plugin: 'cache-frio', key: 'isEnabled' } as const
@@ -103,12 +104,15 @@ export const register: Register = on => {
     }
 
     // Botão com um filho Text de fundo colorido: a forma de desenhar um
-    // "pill" de toggle nesta API, já que um Button só aceita string/Text
-    // como filho (nenhum Box dentro dele).
+    // toggle arredondado nesta API, já que um Button só aceita string/Text
+    // como filho (nenhum Box dentro dele). A bolinha desliza de uma ponta à
+    // outra da "trilha" (padStart/padEnd) em vez de escrever ON/OFF.
     const Toggle = (row: Row) => (
       <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
-        <Text backgroundColor={row.isEnabled ? TOGGLE_ON : TOGGLE_OFF} color={row.isEnabled ? TOGGLE_TEXT_ON : TOGGLE_TEXT_OFF} bold>
-          {row.isEnabled ? '  ON  ' : '  OFF ' }
+        <Text backgroundColor={row.isEnabled ? TOGGLE_ON : TOGGLE_OFF} color={TOGGLE_KNOB} bold>
+          {row.isEnabled
+            ? TOGGLE_KNOB_GLYPH.padStart(TOGGLE_TRACK_WIDTH)
+            : TOGGLE_KNOB_GLYPH.padEnd(TOGGLE_TRACK_WIDTH)}
         </Text>
       </Button>
     )
