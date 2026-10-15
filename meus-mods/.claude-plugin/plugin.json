@@ -2,5 +2,14 @@
   "name": "meus-mods",
   "version": "0.1.0",
   "description": "Painel central dos mods: faixa acima do prompt com atalhos e o comando /mods com o estado de cada mod.",
-  "dependencies": ["tela-limpa"]
+  "dependencies": [
+    "clean-view",
+    "cache-frio",
+    "delegation-dock",
+    "memoria",
+    "painel",
+    "uso-vivo",
+    "wait-quiz",
+    "next-prompts"
+  ]
 }
