@@ -1,10 +1,10 @@
-export type TelaLimpaState = {
+export type CleanViewState = {
   isEnabled: boolean
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    'tela-limpa': {
+    'clean-view': {
       isEnabled: boolean
     }
   }
