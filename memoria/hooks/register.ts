@@ -1,4 +1,7 @@
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
+
+const isEnabledRef = atom({ plugin: 'memoria', key: 'isEnabled' } as const, true)
 
 const API = 'http://127.0.0.1:49374/api/v1'
 const NET_MS = 1500
@@ -96,7 +99,27 @@ async function recall($: EngineInterface, text: string): Promise<string | null> 
 }
 
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'memoria',
+      description: 'Liga/desliga a busca no ai-memory antes de cada prompt.',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'memoria' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `memoria esta ${isEnabled ? 'ativada' : 'desativada'}. Uso: /memoria on · /memoria off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `memoria ${arg === 'on' ? 'ativada' : 'desativada'}.` }
+  })
+
   on('prompt.submit', async ($, e, next) => {
+    if (!(await read($, isEnabledRef))) return next(e)
     const text = e.text.trim()
     if (e.origin.kind !== 'composer' || text.startsWith('/') || text.length < MIN_CHARS) return next(e)
     const block = await recall($, text).catch(() => null) // memory is a bonus: any failure leaves the prompt as it was
