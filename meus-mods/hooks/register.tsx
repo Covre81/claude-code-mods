@@ -4,11 +4,14 @@ const PANEL_ID = 'meus-mods-panel'
 const BRAND = '#D97757'
 const BG = '#11141c'
 const BG_ALT = '#171b26'
-const TOGGLE_ON = '#4caf6e'
-const TOGGLE_OFF = '#3a3f4b'
-const TOGGLE_KNOB = '#f2efe9'
-const TOGGLE_KNOB_GLYPH = '●'
-const TOGGLE_TRACK_WIDTH = 7
+const TOGGLE_ON = '#2ecc71'
+const TOGGLE_OFF = '#ff5252'
+const TOGGLE_KNOB = '#f4f4f4'
+const TOGGLE_TRAVEL = '  '
+// ponytail: semicírculos powerline da Nerd Font (U+E0B6/U+E0B4), que enchem a
+// altura da célula. Sem Nerd Font viram quadradinho; volte a ◖◗ nesse caso.
+const TOGGLE_CAP_LEFT = ''
+const TOGGLE_CAP_RIGHT = ''
 
 const cleanViewRef = { plugin: 'clean-view', key: 'isEnabled' } as const
 const cacheFrioRef = { plugin: 'cache-frio', key: 'isEnabled' } as const
@@ -127,19 +130,38 @@ export const register: Register = on => {
       void $.command.run({ command: row.command, args: row.isEnabled ? 'off' : 'on' })
     }
 
-    // Botão com um filho Text de fundo colorido: a forma de desenhar um
-    // toggle arredondado nesta API, já que um Button só aceita string/Text
-    // como filho (nenhum Box dentro dele). A bolinha desliza de uma ponta à
-    // outra da "trilha" (padStart/padEnd) em vez de escrever ON/OFF.
-    const Toggle = (row: Row) => (
-      <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
-        <Text backgroundColor={row.isEnabled ? TOGGLE_ON : TOGGLE_OFF} color={TOGGLE_KNOB} bold>
-          {row.isEnabled
-            ? TOGGLE_KNOB_GLYPH.padStart(TOGGLE_TRACK_WIDTH)
-            : TOGGLE_KNOB_GLYPH.padEnd(TOGGLE_TRACK_WIDTH)}
-        </Text>
-      </Button>
-    )
+    // Pílula: trilha com fundo colorido e duas tampas semicirculares
+    // com a cor da trilha no texto, o que dá a ponta arredondada. Um Button
+    // só aceita string/Text como filho, então tudo aninha em Text. A bolinha
+    // é um círculo branco de 2 células que ocupa a ponta do lado ativo: a
+    // metade de fora fica no lugar da tampa, então encosta na borda de verdade.
+    // Largura total: 5 células.
+    const Toggle = (row: Row) => {
+      const track = row.isEnabled ? TOGGLE_ON : TOGGLE_OFF
+      return (
+        <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
+          {row.isEnabled ? (
+            <Text>
+              <Text color={track}>{TOGGLE_CAP_LEFT}</Text>
+              <Text backgroundColor={track}>
+                {TOGGLE_TRAVEL}
+                <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_LEFT}</Text>
+              </Text>
+              <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_RIGHT}</Text>
+            </Text>
+          ) : (
+            <Text>
+              <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_LEFT}</Text>
+              <Text backgroundColor={track}>
+                <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_RIGHT}</Text>
+                {TOGGLE_TRAVEL}
+              </Text>
+              <Text color={track}>{TOGGLE_CAP_RIGHT}</Text>
+            </Text>
+          )}
+        </Button>
+      )
+    }
 
     const renderRow = (row: Row, i: number) => (
       <Box key={row.name} flexDirection="row" gap={1} paddingX={1} backgroundColor={i % 2 ? BG_ALT : undefined}>
