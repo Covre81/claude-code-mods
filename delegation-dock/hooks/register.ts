@@ -1,4 +1,7 @@
+import { atom, read, update } from 'claude-code'
 import type { Register, EngineInterface } from 'claude-code'
+
+const isEnabledRef = atom({ plugin: 'delegation-dock', key: 'isEnabled' } as const, true)
 
 type Job = { tool: string; startedAt: number; outputPath?: string; isRedirected: boolean }
 
@@ -39,7 +42,28 @@ function refresh($: EngineInterface) {
 export const register: Register = on => {
   jobs.clear()
 
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'delegation-dock',
+      description: 'Liga/desliga a linha de status das delegações (agy/codex/ollama).',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'delegation-dock' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `delegation-dock esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /delegation-dock on · /delegation-dock off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    if (arg === 'off') $.ui.status(undefined)
+    return { text: `delegation-dock ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
+
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (!(await read($, isEnabledRef))) return next(e)
     const tool = delegateOf(e.command)
     if (!tool) return next(e)
 

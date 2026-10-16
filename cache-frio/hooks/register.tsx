@@ -1,4 +1,7 @@
+import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
+
+const isEnabledRef = atom({ plugin: 'cache-frio', key: 'isEnabled' } as const, true)
 
 // ponytail: fixed 1h TTL — on overage the real TTL drops to 5m and this under-warns; no API exposes it here.
 // Upgrade: read the TTL from the event once the host exposes it (today only PreModelSwitch has cache_ttl).
@@ -23,12 +26,32 @@ const formatIdle = (ms: number) => {
 export const register: Register = on => {
   let lastAnswerAt: number | undefined
 
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'cache-frio',
+      description: 'Liga/desliga o aviso de cache frio antes de mandar um prompt caro.',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'cache-frio' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `cache-frio esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /cache-frio on · /cache-frio off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `cache-frio ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
+
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) lastAnswerAt = await $.clock.now()
     return next(e)
   }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
+    if (!(await read($, isEnabledRef))) return next(e)
     const idleMs = lastAnswerAt === undefined ? undefined : (await $.clock.now()) - lastAnswerAt
     const tokens = (await $.session.usage()).context.tokens // free without `breakdown`
     if (idleMs === undefined || tokens === undefined || !isCold({ idleMs, tokens, origin: e.origin.kind })) return next(e)

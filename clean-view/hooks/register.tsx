@@ -1,4 +1,7 @@
+import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
+
+const isEnabledRef = atom({ plugin: 'clean-view', key: 'isEnabled' } as const, true)
 
 export type Line = { glyph: string; tool: string; target: string; note?: string }
 
@@ -39,9 +42,29 @@ export function summarize(tool: string, input: unknown, output: unknown): Line |
 }
 
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'clean-view',
+      description: 'Liga/desliga o clean-view: resume cada chamada de ferramenta numa linha.',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'clean-view' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `clean-view esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /clean-view on · /clean-view off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `clean-view ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
+
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     // ponytail: running/errored/interrupted keep the full block, hiding a failure is the one thing a clean view must not do
     if (e.props.isRunning || e.props.isErrored || e.props.isInterrupted) return next(e)
+    if (!(await read($, isEnabledRef))) return next(e)
 
     const line = summarize(e.props.tool, e.props.input, e.props.output)
     if (!line) return next(e)

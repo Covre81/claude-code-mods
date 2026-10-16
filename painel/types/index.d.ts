@@ -17,6 +17,7 @@ declare module 'claude-code' {
       turn: TurnStat | null
       cost: number | null
       limits: Limit[]
+      isEnabled: boolean
     }
   }
 }

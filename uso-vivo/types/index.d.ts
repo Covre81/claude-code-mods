@@ -8,6 +8,7 @@ declare module 'claude-code' {
       ctx: Ctx | null
       limits: Limit[]
       cost: number | null
+      isEnabled: boolean
     }
   }
 }

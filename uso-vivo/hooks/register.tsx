@@ -6,6 +6,7 @@ import type { Cat, Ctx, Limit } from '../types'
 const ctx = atom({ plugin: 'uso-vivo', key: 'ctx' } as const, null)
 const limits = atom({ plugin: 'uso-vivo', key: 'limits' } as const, [])
 const cost = atom({ plugin: 'uso-vivo', key: 'cost' } as const, null)
+const isEnabledRef = atom({ plugin: 'uso-vivo', key: 'isEnabled' } as const, true)
 
 // Same thresholds as the mock: calm below 75, warn at 75, alarm at 90.
 export const tone = (pct: number) => (pct >= 90 ? 'red' : pct >= 75 ? 'yellow' : 'green')
@@ -69,21 +70,42 @@ async function refresh($: Engine, breakdown: boolean) {
 }
 
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'uso-vivo',
+      description: 'Liga/desliga a caixa de contexto e a linha de uso acima do prompt.',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'uso-vivo' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `uso-vivo esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /uso-vivo on · /uso-vivo off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `uso-vivo ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
+
   // Breakdown is computed here, once per turn; the render hook only reads atoms.
   on('turn.complete', async ($, e, next) => {
     const res = await next(e)
-    if (!e.agentId) {
+    if (!e.agentId && (await read($, isEnabledRef))) {
       try { await refresh($, true) } catch { /* keeps the last reading */ }
     }
     return res
   })
   on('session.measure', async ($, e, next) => {
-    try { await refresh($, false) } catch { /* keeps the last reading */ }
+    if (await read($, isEnabledRef)) {
+      try { await refresh($, false) } catch { /* keeps the last reading */ }
+    }
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.isWorking || e.props.hasSurvey) return next(e)
+    if (e.props.isWorking || e.props.hasSurvey || !(await read($, isEnabledRef))) return next(e)
     const c: Ctx | null = await read($, ctx)
     const ls = await read($, limits)
     const usd = await read($, cost)

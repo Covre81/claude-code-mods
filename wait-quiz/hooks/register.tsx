@@ -17,6 +17,7 @@ const CAP_MAX = 500
 
 const card = atom({ plugin: 'wait-quiz', key: 'card' } as const, null)
 const isRevealed = atom({ plugin: 'wait-quiz', key: 'isRevealed' } as const, false)
+const isEnabledRef = atom({ plugin: 'wait-quiz', key: 'isEnabled' } as const, true)
 
 const clean = (s: string) => {
   const t = s.replace(/<br\s*\/?>/gi, ' / ').replace(/<[^>]+>/g, '').replace(/\*\*|`/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
@@ -127,8 +128,23 @@ export const register: Register = on => {
       },
       isDeferred: false,
     })
+    await $.command.register({
+      name: 'wait-quiz',
+      description: 'Liga/desliga o quiz na faixa acima do prompt enquanto Claude trabalha.',
+      argumentHint: 'on|off',
+    })
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  on('command.run', { command: 'wait-quiz' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `wait-quiz esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /wait-quiz on · /wait-quiz off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `wait-quiz ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
 
   on('command.run', { command: 'cartao' }, async ($, e) => {
     if (!e.args.trim()) return { text: `Uso: /cartao frente | verso | tópico. Capturados até agora: ${(await captured($)).length}.` }
@@ -141,13 +157,13 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') await deal($).catch(() => undefined)
+    if ((e.origin.kind === 'composer' || e.origin.kind === 'bridge') && (await read($, isEnabledRef))) await deal($).catch(() => undefined)
     return next(e)
   }).catch(($, e, next) => next(e)) // a quiz bug must never eat the prompt
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const c = await read($, card)
-    if (!e.props.isWorking || e.props.hasSurvey || !c) return next(e)
+    if (!e.props.isWorking || e.props.hasSurvey || !c || !(await read($, isEnabledRef))) return next(e)
     const revealed = await read($, isRevealed)
     const { Box, Button, Text } = $.ui.resolve(e)
     return (

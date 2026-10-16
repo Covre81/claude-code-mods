@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Band, Suggestion } from '../types'
 
 const band = atom({ plugin: 'next-prompts', key: 'band' } as const, { items: [], note: null } as Band)
+const isEnabledRef = atom({ plugin: 'next-prompts', key: 'isEnabled' } as const, true)
 
 /** Past this the context is where the money goes (jev-router telemetry, week to 2026-10-06). */
 const CONTEXT_WARN_TOKENS = 200_000
@@ -166,10 +167,29 @@ export const register: Register = (on, options) => {
   const agyModel = String(options.agyModel ?? 'gemini-3.8-flash-low').trim()
   let generation = 0
 
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'next-prompts',
+      description: 'Liga/desliga as sugestões de próximo passo acima do prompt.',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'next-prompts' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `next-prompts esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /next-prompts on · /next-prompts off` }
+    }
+    await update($, isEnabledRef, () => arg === 'on')
+    return { text: `next-prompts ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     // Subagents end turns too; only the main conversation's next step matters.
-    if (e.agentId || e.isAborted) return result
+    if (e.agentId || e.isAborted || !(await read($, isEnabledRef))) return result
     // Unawaited: the band fills in when the model answers, the turn never waits on it.
     const mine = ++generation
     void refresh($, models, ollamaUrl, agyModel, () => mine === generation).catch(() => undefined)
@@ -178,7 +198,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const { items, note, picked = [] } = await read($, band)
-    if (e.props.hasSurvey || e.props.isWorking || (items.length === 0 && !note)) return next(e)
+    if (e.props.hasSurvey || e.props.isWorking || (items.length === 0 && !note) || !(await read($, isEnabledRef))) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
     // Stack over whatever the plugins beneath draw (painel's weather), so load order never hides either.

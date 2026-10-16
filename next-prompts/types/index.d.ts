@@ -4,6 +4,6 @@ export type Band = { items: Suggestion[]; note: string | null; picked?: number[]
 
 declare module 'claude-code' {
   interface PluginState {
-    'next-prompts': { band: Band }
+    'next-prompts': { band: Band; isEnabled: boolean }
   }
 }
