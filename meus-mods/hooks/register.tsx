@@ -27,8 +27,6 @@ const gitSidebarRef = { plugin: 'git-sidebar', key: 'isEnabled' } as const
 const turnInspectorRef = { plugin: 'turn-inspector', key: 'isEnabled' } as const
 const agentFlowRef = { plugin: 'agent-flow', key: 'isEnabled' } as const
 const sessionTimeMachineRef = { plugin: 'session-time-machine', key: 'isEnabled' } as const
-const toolDefenseRef = { plugin: 'tool-defense', key: 'isEnabled' } as const
-const diffInvadersRef = { plugin: 'diff-invaders', key: 'isEnabled' } as const
 
 type Row = {
   command: string | null
@@ -54,8 +52,6 @@ async function rows($: EngineInterface): Promise<Row[]> {
   const { value: turnInspector = true } = await $.state.get(turnInspectorRef)
   const { value: agentFlow = true } = await $.state.get(agentFlowRef)
   const { value: sessionTimeMachine = true } = await $.state.get(sessionTimeMachineRef)
-  const { value: toolDefense = true } = await $.state.get(toolDefenseRef)
-  const { value: diffInvaders = true } = await $.state.get(diffInvadersRef)
 
   return [
     { command: 'clean-view', icon: '🧹', accent: '#5fd98a', name: 'clean-view', description: 'Resume cada chamada de ferramenta numa linha', isEnabled: cleanView },
@@ -72,8 +68,6 @@ async function rows($: EngineInterface): Promise<Row[]> {
     { command: 'turns', icon: '🪟', accent: '#d9875f', name: 'turn-inspector', description: 'Cada turno do modelo com a janela de contexto', isEnabled: turnInspector },
     { command: 'agent-flow', icon: '🌳', accent: '#7aa6da', name: 'agent-flow', description: 'Árvore ao vivo dos subagentes e o contexto entre eles', isEnabled: agentFlow },
     { command: 'timemachine', icon: '⏱', accent: '#58a6ff', name: 'session-time-machine', description: 'Linha do tempo da sessão; bifurca a partir de qualquer ponto', isEnabled: sessionTimeMachine },
-    { command: 'defense', icon: '🏰', accent: '#ff9d5c', name: 'tool-defense', description: 'Tower defense acima do prompt: cada tool call é um inimigo', isEnabled: toolDefense },
-    { command: 'diff-invaders', icon: '👾', accent: '#ff6f91', name: 'diff-invaders', description: 'Space Invaders acima do prompt: cada diff é uma onda', isEnabled: diffInvaders },
     { command: null, icon: '🛡', accent: '#e0c84a', name: 'guarda', description: 'Segura comando destrutivo e pede confirmação', isEnabled: null },
     { command: null, icon: '🔐', accent: '#5fd98a', name: 'cofre', description: 'Mantém chave de API fora da conversa', isEnabled: null },
     { command: null, icon: '🗑', accent: '#8a8f99', name: 'lixeira', description: 'Manda rm para a Lixeira do Windows', isEnabled: null },

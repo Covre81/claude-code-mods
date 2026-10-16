@@ -16,8 +16,6 @@
     "git-sidebar",
     "turn-inspector",
     "agent-flow",
-    "session-time-machine",
-    "tool-defense",
-    "diff-invaders"
+    "session-time-machine"
   ]
 }
