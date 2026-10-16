@@ -24,7 +24,7 @@
  * actually stops the mod's background git work, not just the pane.
  */
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 import {
   buildTimeline,
   clip,
@@ -85,6 +85,15 @@ const ingest = (text: string) => {
 
 const fail = (err: unknown) => {
   problem = `cannot read the transcript (${err instanceof Error ? err.message : String(err)}); the read limit is 4 MiB`
+}
+
+// The engine does not hand HOME to mods on Windows; without USERPROFILE the old
+// `~` fallback was never expanded and every transcript read hit ENOENT.
+async function configDir($: EngineInterface): Promise<string> {
+  const explicit = await $.env.get('CLAUDE_CONFIG_DIR')
+  if (explicit) return explicit
+  const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE')) || '~'
+  return `${home.replace(/\\/g, '/')}/.claude`
 }
 
 export const register: Register = (on, options) => {
@@ -159,7 +168,7 @@ export const register: Register = (on, options) => {
       const c: Ctx = {
         cwd: await $.session.cwd(),
         sid: await $.session.id(),
-        dir: (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? '~'}/.claude`,
+        dir: await configDir($),
         run: (argv, init) => $.process.run(argv, init),
         read: path => $.fs.read(path),
         write: (path, text) => $.fs.write(path, text),
@@ -178,7 +187,7 @@ export const register: Register = (on, options) => {
       const c: Ctx = {
         cwd: await $.session.cwd(),
         sid: await $.session.id(),
-        dir: (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? '~'}/.claude`,
+        dir: await configDir($),
         run: (argv, init) => $.process.run(argv, init),
         read: path => $.fs.read(path),
         write: (path, text) => $.fs.write(path, text),
@@ -195,7 +204,7 @@ export const register: Register = (on, options) => {
       const c: Ctx = {
         cwd: await $.session.cwd(),
         sid: await $.session.id(),
-        dir: (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? '~'}/.claude`,
+        dir: await configDir($),
         run: (argv, init) => $.process.run(argv, init),
         read: path => $.fs.read(path),
         write: (path, text) => $.fs.write(path, text),
@@ -230,7 +239,7 @@ export const register: Register = (on, options) => {
     const c: Ctx = {
         cwd: await $.session.cwd(),
         sid: await $.session.id(),
-        dir: (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? '~'}/.claude`,
+        dir: await configDir($),
         run: (argv, init) => $.process.run(argv, init),
         read: path => $.fs.read(path),
         write: (path, text) => $.fs.write(path, text),
@@ -283,7 +292,7 @@ export const register: Register = (on, options) => {
                 forkResult = await forkAt({
                   cwd: await $.session.cwd(),
                   sid: await $.session.id(),
-                  dir: (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? '~'}/.claude`,
+                  dir: await configDir($),
                   run: (argv, init) => $.process.run(argv, init),
                   read: path => $.fs.read(path),
                   write: (path, text) => $.fs.write(path, text),
@@ -413,7 +422,7 @@ export const register: Register = (on, options) => {
               await reread({
                 cwd: await $.session.cwd(),
                 sid: await $.session.id(),
-                dir: (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? '~'}/.claude`,
+                dir: await configDir($),
                 run: (argv, init) => $.process.run(argv, init),
                 read: path => $.fs.read(path),
                 write: (path, text) => $.fs.write(path, text),
