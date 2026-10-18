@@ -1,1 +1,0 @@
-{ "name": "uso-vivo", "version": "0.1.0", "description": "Caixa de contexto e linha de uso (5h/7d, reset, custo) acima do prompt.", "types": "./types/index.d.ts" }
