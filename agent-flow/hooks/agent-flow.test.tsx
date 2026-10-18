@@ -206,15 +206,9 @@ describe('on/off toggle', () => {
     await drain($)
     await $.agent.spawn({ prompt: 'ignored', description: 'ignored', subagentType: 'Explore' })
 
+    // on opens the pane too, called bare the way the meus-mods toggle calls it
     const on_ = await $.command.run({ command: 'agent-flow', args: 'on' })
-    expect(on_.text).toBe('agent-flow ativado.')
-
-    const reopened = await $.command.run({
-      command: 'agent-flow',
-      args: '',
-      origin: { kind: 'composer' },
-      presentation: { isFullscreen: true, columns: 200 },
-    })
-    expect(reopened.text).toContain('0 agents so far')
+    expect(on_.text).toContain('agent-flow ativado.')
+    expect(on_.text).toContain('0 agents so far')
   })
 })

@@ -194,10 +194,9 @@ describe('on/off toggle', () => {
     const reopen = await openSidebar($)
     expect(reopen.text).toBe('git-sidebar esta desativado. Uso: /git-sidebar on')
 
+    // on opens the pane too, called bare the way the meus-mods toggle calls it
     const on_ = await $.command.run({ command: 'git-sidebar', args: 'on' })
-    expect(on_.text).toBe('git-sidebar ativado.')
-
-    const reopened = await openSidebar($)
-    expect(reopened.text).toContain('worktrees')
+    expect(on_.text).toContain('git-sidebar ativado.')
+    expect(on_.text).toContain('worktrees')
   })
 })

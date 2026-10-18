@@ -138,17 +138,19 @@ export const register: Register = (on, options) => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
 
-    if (arg === 'on' || arg === 'off') {
-      await update($, isEnabledRef, () => arg === 'on')
-      if (arg === 'off' && isOpen) {
+    if (arg === 'off') {
+      await update($, isEnabledRef, () => false)
+      if (isOpen) {
         await $.ui.close({ id: PANE }).catch(() => undefined)
         isOpen = false
         $.ui.status(undefined)
       }
-      return { text: `git-sidebar ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+      return { text: 'git-sidebar desativado.' }
     }
 
-    if (!(await read($, isEnabledRef))) {
+    // on also opens the pane: it is never drawn unasked, so a bare state flip showed nothing
+    if (arg === 'on') await update($, isEnabledRef, () => true)
+    else if (!(await read($, isEnabledRef))) {
       return { text: 'git-sidebar esta desativado. Uso: /git-sidebar on' }
     }
 
@@ -165,11 +167,12 @@ export const register: Register = (on, options) => {
     await $.ui.open({ id: PANE, title: 'git', focus: true, columns })
     $.ui.status(statusText())
     $.ui.invalidate('ui.render')
-    const hint = e.presentation.isFullscreen
+    const hint = e.presentation?.isFullscreen
       ? 'click a row, or Tab and Enter'
       : 'drawn above the prompt; /tui fullscreen docks it beside the transcript'
     const found = snap ? `${snap.worktrees.length} worktrees, ${snap.branches.length} branches` : error
-    return { text: `${found} · ${hint} · /${COMMAND} stop closes` }
+    const prefix = arg === 'on' ? 'git-sidebar ativado. ' : ''
+    return { text: `${prefix}${found} · ${hint} · /${COMMAND} stop closes` }
   })
 
   // the session moved (a row of ours, or the person's own /cd): read the new worktree

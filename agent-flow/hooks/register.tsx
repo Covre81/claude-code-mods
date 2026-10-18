@@ -125,15 +125,20 @@ export const register: Register = (on, options) => {
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
 
-    if (arg === 'on' || arg === 'off') {
-      isEnabled = arg === 'on'
-      await update($, isEnabledRef, () => isEnabled)
-      if (!isEnabled && isOpen) {
+    if (arg === 'off') {
+      isEnabled = false
+      await update($, isEnabledRef, () => false)
+      if (isOpen) {
         await $.ui.close({ id: PANE }).catch(() => undefined)
         isOpen = false
         $.ui.status(undefined)
       }
-      return { text: `agent-flow ${isEnabled ? 'ativado' : 'desativado'}.` }
+      return { text: 'agent-flow desativado.' }
+    }
+    // on also opens the pane: it is never drawn unasked, so a bare state flip showed nothing
+    if (arg === 'on') {
+      isEnabled = true
+      await update($, isEnabledRef, () => true)
     }
     if (!isEnabled) {
       return { text: 'agent-flow esta desativado. Uso: /agent-flow on' }
@@ -165,10 +170,11 @@ export const register: Register = (on, options) => {
     $.ui.status(statusText())
     $.ui.invalidate('ui.render')
     const c = counts(flow)
-    const hint = e.presentation.isFullscreen
+    const hint = e.presentation?.isFullscreen
       ? 'click an agent, or Tab and Enter'
       : 'drawn above the prompt; /tui fullscreen docks it beside the transcript'
-    return { text: `${c.running + c.done + c.failed} agents so far · ${hint} · /${COMMAND} stop closes` }
+    const prefix = arg === 'on' ? 'agent-flow ativado. ' : ''
+    return { text: `${prefix}${c.running + c.done + c.failed} agents so far · ${hint} · /${COMMAND} stop closes` }
   })
 
   on('turn.start', async ($, e, next) => {
