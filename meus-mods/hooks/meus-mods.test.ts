@@ -7,7 +7,7 @@ test('/mods registra o comando e abre o painel', async ($, on) => {
   on('ui.open', () => ({ value: { isPlaced: true } }))
   register(on, {})
 
-  const result = await $.command.run({ command: 'mods', args: '' })
+  const result = await $.command.run({ command: 'mods', args: '', origin: { kind: 'composer' }, presentation: 'text' } as never)
 
   expect(result.text).toContain('Painel Meus Mods aberto')
 })
