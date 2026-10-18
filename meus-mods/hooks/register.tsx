@@ -18,9 +18,8 @@ const TOGGLE_KNOB_BLOCK = '  '
 const cleanViewRef = { plugin: 'clean-view', key: 'isEnabled' } as const
 const cacheFrioRef = { plugin: 'cache-frio', key: 'isEnabled' } as const
 const delegationDockRef = { plugin: 'delegation-dock', key: 'isEnabled' } as const
-const memoriaRef = { plugin: 'memoria', key: 'isEnabled' } as const
-const painelRef = { plugin: 'painel', key: 'isEnabled' } as const
-const usoVivoRef = { plugin: 'uso-vivo', key: 'isEnabled' } as const
+const memoriaRef = { plugin: 'context-monitor', key: 'memoriaEnabled' } as const
+const contextMonitorRef = { plugin: 'context-monitor', key: 'isEnabled' } as const
 const waitQuizRef = { plugin: 'wait-quiz', key: 'isEnabled' } as const
 const nextPromptsRef = { plugin: 'next-prompts', key: 'isEnabled' } as const
 const webfetchCacheRef = { plugin: 'webfetch-cache', key: 'isEnabled' } as const
@@ -46,8 +45,7 @@ async function rows($: EngineInterface): Promise<Row[]> {
   const { value: cacheFrio = true } = await $.state.get(cacheFrioRef)
   const { value: delegationDock = true } = await $.state.get(delegationDockRef)
   const { value: memoria = true } = await $.state.get(memoriaRef)
-  const { value: painel = true } = await $.state.get(painelRef)
-  const { value: usoVivo = true } = await $.state.get(usoVivoRef)
+  const { value: contextMonitor = true } = await $.state.get(contextMonitorRef)
   const { value: waitQuiz = true } = await $.state.get(waitQuizRef)
   const { value: nextPrompts = true } = await $.state.get(nextPromptsRef)
   const { value: webfetchCache = true } = await $.state.get(webfetchCacheRef)
@@ -64,8 +62,7 @@ async function rows($: EngineInterface): Promise<Row[]> {
     { command: 'cache-frio', icon: '🧊', accent: '#5fb8d9', name: 'cache-frio', description: 'Avisa antes de mandar um prompt caro com cache frio', isEnabled: cacheFrio },
     { command: 'delegation-dock', icon: '🛰', accent: '#c97fe0', name: 'delegation-dock', description: 'Status das delegações em voo (agy/codex/ollama)', isEnabled: delegationDock },
     { command: 'memoria', icon: '🧠', accent: '#9b8cf0', name: 'memoria', description: 'Busca notas do ai-memory antes de cada prompt', isEnabled: memoria },
-    { command: 'painel', icon: '🌤', accent: '#4aa3df', name: 'painel', description: 'Clima do contexto, replay de edições e atividade', isEnabled: painel },
-    { command: 'uso-vivo', icon: '📊', accent: '#e0c84a', name: 'uso-vivo', description: 'Caixa de contexto e linha de uso (5h/7d, custo)', isEnabled: usoVivo },
+    { command: 'monitor', icon: '🌤', accent: '#4aa3df', name: 'context-monitor', description: 'Clima e caixa de contexto, uso 5h/7d, replay e atividade', isEnabled: contextMonitor },
     { command: 'wait-quiz', icon: '🎴', accent: '#e8955c', name: 'wait-quiz', description: 'Quiz de estudo na faixa enquanto Claude trabalha', isEnabled: waitQuiz },
     { command: 'next-prompts', icon: '💡', accent: '#f0d75c', name: 'next-prompts', description: 'Sugestões de próximo passo acima do prompt', isEnabled: nextPrompts },
     { command: 'webfetch-cache', icon: '🌐', accent: '#4fd1c5', name: 'webfetch-cache', description: 'Cache de WebFetch repetido na mesma sessão', isEnabled: webfetchCache },
@@ -96,7 +93,7 @@ export const register: Register = on => {
     return { text: 'Painel Meus Mods aberto.' }
   })
 
-  // painel, uso-vivo e next-prompts já disputam o AbovePrompt entre si e
+  // context-monitor e next-prompts já disputam o AbovePrompt entre si e
   // resolvem empilhando: cada um pede next(e) primeiro e só então desenha a
   // própria linha por cima do que estiver embaixo. Este hook segue o mesmo
   // padrão para não arrancar a faixa de ninguém.
