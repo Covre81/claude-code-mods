@@ -83,4 +83,15 @@ export const register: Register = on => {
       </Box>
     )
   })
+
+  // Numa chamada isolada a saída (stdout do Bash, diff do Edit) é um ToolResult
+  // à parte, desenhado embaixo da linha: sem isto o resumo vinha com o bloco
+  // inteiro logo abaixo. Erro continua aparecendo inteiro.
+  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+    if (e.props.isErrored) return next(e)
+    const isEnabled = await $.store.get('isEnabled').catch(() => false)
+    if (!isEnabled || !summarize(e.props.tool, {}, e.props.output)) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box />
+  })
 }
