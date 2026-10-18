@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { summarize } from './register'
 
@@ -24,5 +24,25 @@ describe('summarize', () => {
   test('unknown tools and missing input fall through to the engine block', () => {
     expect(summarize('mcp__x__y', {}, null)).toBeNull()
     expect(summarize('Read', undefined, null)?.target).toBe('')
+  })
+})
+
+// The engine's own block, beneath the plugin: an empty Box stands in for it.
+const AT = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } } as const
+const BASH = { tool_use_id: 'toolu_1', tool: 'Bash', input: { command: 'git   status' }, isRunning: false, isErrored: false, isInterrupted: false, output: { stdout: 'x' } }
+
+describe('render', () => {
+  test('/clean-view on|off redraws a mounted row without an explicit redraw', async ($, on) => {
+    mock.store(on)
+    on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
+    const row = await $.ui.mount({ plugin: 'clean-view', surface: 'terminal', component: 'ToolUse', requestId: 'toolu_1', props: BASH })
+    const summary = () => row.find({ type: 'Text', text: 'git status' })
+
+    expect(await summary()).toBeUndefined()
+    await $.command.run({ command: 'clean-view', args: 'on', ...AT })
+    expect(await summary()).toBeDefined()
+    await $.command.run({ command: 'clean-view', args: 'off', ...AT })
+    expect(await summary()).toBeUndefined()
+    await row.unmount()
   })
 })

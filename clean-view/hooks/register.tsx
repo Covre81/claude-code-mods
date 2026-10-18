@@ -66,9 +66,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     if (e.props.isRunning || e.props.isErrored || e.props.isInterrupted) return next(e)
-
-    const isEnabled = await $.store.get('isEnabled').catch(() => false)
-    if (!isEnabled) return next(e)
+    // read() inside ui.render subscribes the row: /clean-view on|off redraws it
+    if (!(await read($, isEnabledRef))) return next(e)
 
     const line = summarize(e.props.tool, e.props.input, e.props.output)
     if (!line) return next(e)
@@ -89,8 +88,7 @@ export const register: Register = on => {
   // inteiro logo abaixo. Erro continua aparecendo inteiro.
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     if (e.props.isErrored) return next(e)
-    const isEnabled = await $.store.get('isEnabled').catch(() => false)
-    if (!isEnabled || !summarize(e.props.tool, {}, e.props.output)) return next(e)
+    if (!(await read($, isEnabledRef)) || !summarize(e.props.tool, {}, e.props.output)) return next(e)
     const { Box } = $.ui.resolve(e)
     return <Box />
   })
