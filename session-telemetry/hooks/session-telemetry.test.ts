@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import { speedLine, stamp, switchLine } from './register'
 
 // 2026-10-18 13:05:09 UTC = 14:05:09 em Londres (BST)
@@ -64,5 +64,49 @@ describe('speedLine', () => {
     expect(speedLine(0, 800, 800, 100)).toBe('⚡ TTFT 800ms')
     expect(speedLine(0, 800, 2800, 0)).toBe('⚡ TTFT 800ms')
     expect(speedLine(0, 800, 2800, null)).toBe('⚡ TTFT 800ms')
+  })
+})
+
+// The engine streams two text chunks, then stop; `now` is what clock.now answers at
+// each point. Each wrong reading of the loop gives a different number: taking the
+// last chunk as first token -> TTFT 1500ms; missing the stop -> the decode runs to
+// 5000 and the rate drops to 24.4. An engine chunk is the real engine's handle and
+// a fake cannot yield one, so the `kind !== 'engine'` skip stays untested here.
+function streaming(on: On) {
+  const logged: string[] = []
+  let now = 0
+  on('clock.now', () => ({ value: now }) as never)
+  on('turn.step', async function* (_$, e) {
+    now = 900
+    yield { kind: 'text', index: 0, text: 'o' } as const
+    now = 1500
+    yield { kind: 'text', index: 0, text: 'i' } as const
+    now = 2900
+    yield { kind: 'stop', stopReason: 'end_turn', usage: null } as const
+    now = 5000
+    const usage = { input_tokens: 10, output_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' }
+    return { turnId: e.turnId, index: e.index, answer: 'oi', toolUses: [], stopReason: 'end_turn' as const, usage }
+  })
+  on('ui.log', (_$, e) => {
+    logged.push(e.text)
+    return { value: undefined }
+  })
+  on('ui.toast', () => ({ value: undefined }) as never)
+  return () => logged.filter(l => l.startsWith('⚡'))
+}
+
+describe('turn.step speed', () => {
+  test('TTFT conta do envio ao primeiro chunk do modelo, a taxa até o stop', async ($, on) => {
+    const speed = streaming(on)
+    await step($)
+    expect(speed()).toEqual(['⚡ TTFT 900ms · 50.0 tok/s'])
+  })
+  test('subagente e /telemetria off não logam velocidade', async ($, on) => {
+    mock.store(on)
+    const speed = streaming(on)
+    await step($, 'sub-1')
+    await $.command.run({ command: 'telemetria', args: 'off', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
+    await step($)
+    expect(speed()).toEqual([])
   })
 })
