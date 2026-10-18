@@ -29,6 +29,8 @@ const gitSidebarRef = { plugin: 'git-sidebar', key: 'isEnabled' } as const
 const turnInspectorRef = { plugin: 'turn-inspector', key: 'isEnabled' } as const
 const agentFlowRef = { plugin: 'agent-flow', key: 'isEnabled' } as const
 const sessionTimeMachineRef = { plugin: 'session-time-machine', key: 'isEnabled' } as const
+const phaseTrackerRef = { plugin: 'phase-tracker', key: 'isEnabled' } as const
+const sessionTelemetryRef = { plugin: 'session-telemetry', key: 'isEnabled' } as const
 
 type Row = {
   command: string | null
@@ -54,6 +56,8 @@ async function rows($: EngineInterface): Promise<Row[]> {
   const { value: turnInspector = true } = await $.state.get(turnInspectorRef)
   const { value: agentFlow = true } = await $.state.get(agentFlowRef)
   const { value: sessionTimeMachine = true } = await $.state.get(sessionTimeMachineRef)
+  const { value: phaseTracker = true } = await $.state.get(phaseTrackerRef)
+  const { value: sessionTelemetry = true } = await $.state.get(sessionTelemetryRef)
 
   return [
     { command: 'clean-view', icon: '🧹', accent: '#5fd98a', name: 'clean-view', description: 'Resume cada chamada de ferramenta numa linha', isEnabled: cleanView },
@@ -70,6 +74,8 @@ async function rows($: EngineInterface): Promise<Row[]> {
     { command: 'turns', icon: '🪟', accent: '#d9875f', name: 'turn-inspector', description: 'Cada turno do modelo com a janela de contexto', isEnabled: turnInspector },
     { command: 'agent-flow', icon: '🌳', accent: '#7aa6da', name: 'agent-flow', description: 'Árvore ao vivo dos subagentes e o contexto entre eles', isEnabled: agentFlow },
     { command: 'timemachine', icon: '⏱', accent: '#58a6ff', name: 'session-time-machine', description: 'Linha do tempo da sessão; bifurca a partir de qualquer ponto', isEnabled: sessionTimeMachine },
+    { command: 'fase', icon: '🎯', accent: '#4aa3df', name: 'phase-tracker', description: 'Fases da tarefa guiadas pelo método Karpathy', isEnabled: phaseTracker },
+    { command: 'telemetria', icon: '🕒', accent: '#f08a5d', name: 'session-telemetry', description: 'Hora nas respostas e aviso de troca de modelo', isEnabled: sessionTelemetry },
     { command: null, icon: '🛡', accent: '#e0c84a', name: 'guarda', description: 'Segura comando destrutivo e pede confirmação', isEnabled: null },
     { command: null, icon: '🔐', accent: '#5fd98a', name: 'cofre', description: 'Mantém chave de API fora da conversa', isEnabled: null },
     { command: null, icon: '🗑', accent: '#8a8f99', name: 'lixeira', description: 'Manda rm para a Lixeira do Windows', isEnabled: null },
