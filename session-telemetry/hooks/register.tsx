@@ -50,18 +50,49 @@ export const register: Register = on => {
     return { ...res, displayContent: `[${stamp(await $.clock.now())}] ${res.displayContent ?? e.delta}` }
   })
 
+  // Um hook só: a API lança erro num segundo on('turn.step') do mesmo mod.
   on('turn.step', async function* ($, e, next) {
-    const res = yield* next(e)
-    const model = res.usage?.model
     // Subagentes usam outros modelos de propósito (Explore = Haiku); contar
     // eles marcaria troca falsa a cada spawn.
-    if (e.agentId || !model) return res
+    if (e.agentId) return yield* next(e)
+
+    const sentAt = await $.clock.now()
+    let firstAt: number | null = null
+    let stopAt: number | null = null
+    const s = next(e)
+    for await (const c of s) {
+      if (c.kind === 'stop') stopAt = await $.clock.now()
+      else if (firstAt === null && c.kind !== 'engine') firstAt = await $.clock.now()
+      yield c
+    }
+    const res = await s.result
+    if (!(await read($, isEnabledRef))) {
+      if (res.usage?.model) lastModel = res.usage.model
+      return res
+    }
+
+    const perf = speedLine(sentAt, firstAt, stopAt ?? (await $.clock.now()), res.usage?.output_tokens ?? null)
+    if (perf) $.ui.log(perf)
+
+    const model = res.usage?.model
+    if (!model) return res
     const line = switchLine(lastModel, model, await $.clock.now())
     lastModel = model
-    if (line && (await read($, isEnabledRef))) {
+    if (line) {
       $.ui.log(line)
       $.ui.toast(line, { timeoutMs: 8000 })
     }
     return res
   })
+}
+
+// TTFT e tok/s de um passo, com as guardas do stepSpeed do Flightdeck: sem
+// primeiro token não há linha; sem tokens ou com tempo zero a taxa some em
+// vez de virar Infinity.
+export function speedLine(sentAt: number, firstAt: number | null, stopAt: number, outTokens: number | null): string | null {
+  if (firstAt === null) return null
+  const ttft = Math.max(0, firstAt - sentAt)
+  const decodeMs = stopAt - firstAt
+  const tps = outTokens !== null && outTokens > 0 && decodeMs > 0 ? (outTokens * 1000) / decodeMs : null
+  return `⚡ TTFT ${ttft}ms` + (tps !== null ? ` · ${tps.toFixed(1)} tok/s` : '')
 }

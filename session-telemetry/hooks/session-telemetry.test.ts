@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { describe, expect, test } from 'claude-code/testing'
-import { stamp, switchLine } from './register'
+import { speedLine, stamp, switchLine } from './register'
 
 // 2026-10-18 13:05:09 UTC = 14:05:09 em Londres (BST)
 const T = Date.UTC(2026, 9, 18, 13, 5, 9)
@@ -50,5 +50,19 @@ describe('turn.step', () => {
     await step($, 'sub-1')
     await step($)
     expect(logged).toEqual(['⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gpt-oss:20b-cloud'])
+  })
+})
+
+describe('speedLine', () => {
+  test('TTFT e tok/s do passo', () => {
+    expect(speedLine(0, 800, 2800, 100)).toBe('⚡ TTFT 800ms · 50.0 tok/s')
+  })
+  test('sem primeiro token não há linha', () => {
+    expect(speedLine(0, null, 2800, 100)).toBe(null)
+  })
+  test('tempo zero ou sem tokens: taxa some, nunca Infinity', () => {
+    expect(speedLine(0, 800, 800, 100)).toBe('⚡ TTFT 800ms')
+    expect(speedLine(0, 800, 2800, 0)).toBe('⚡ TTFT 800ms')
+    expect(speedLine(0, 800, 2800, null)).toBe('⚡ TTFT 800ms')
   })
 })
