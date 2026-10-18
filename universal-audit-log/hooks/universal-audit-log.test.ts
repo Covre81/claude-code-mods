@@ -1,6 +1,7 @@
 // Run with: claude plugin test universal-audit-log
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import { redact } from './register'
 
 type World = { files: Record<string, string>; logged: string[] }
 
@@ -100,5 +101,32 @@ describe('universal-audit-log', () => {
     expect((status as { text?: string }).text).toBe(
       'universal-audit-log esta ativado. Uso: /universal-audit-log on · /universal-audit-log off',
     )
+  })
+})
+
+// Each pattern on its own; fixtures are built at run time so the cofre mod
+// does not mask them when this file is written.
+describe('redact', () => {
+  const pk = ['PRIVATE', 'KEY'].join(' ')
+  test('a PEM private key, whole or cut before its END line', () => {
+    expect(redact(`a -----BEGIN RSA ${pk}-----\nMIIabc\n-----END RSA ${pk}----- b`)).toBe('a ••• b')
+    expect(redact(`a -----BEGIN ${pk}-----\nMIIabc`)).toBe('a •••')
+  })
+  test('a JWT and a Google API key', () => {
+    const jwt = ['eyJ' + 'a'.repeat(12), 'eyJ' + 'b'.repeat(12), 'c'.repeat(12)].join('.')
+    expect(redact(`see ${jwt} ok`)).toBe('see ••• ok')
+    expect(redact(`k=${'AIza' + 'x'.repeat(35)}`)).toBe('k=•••')
+  })
+  test('--token / --api-key flags', () => {
+    expect(redact('gh --token abc123456 --api-key=zz9 run')).toBe('gh --token ••• --api-key=••• run')
+  })
+  test('the password in a URL, keeping the user and host', () => {
+    expect(redact('git clone https://bruno:s3cretpw@github.com/x')).toBe('git clone https://bruno:•••@github.com/x')
+  })
+  test('lowercase password= and api_key:, quoted or not', () => {
+    expect(redact('password="a b c" api_key: xyz')).toBe('password=••• api_key: •••')
+  })
+  test('plain commands pass through untouched', () => {
+    for (const s of ['git status --short', 'cat README.md', 'npm run test -- --watch']) expect(redact(s)).toBe(s)
   })
 })
