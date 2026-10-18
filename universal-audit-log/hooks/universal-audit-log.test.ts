@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 
 type World = { files: Record<string, string>; logged: string[] }
 
-function fakeEngine(on: On, w: World) {
+function fakeEngine(on: On, w: World, toolResult: object = { result: { ok: true } }) {
   on('fs.exists', (_$, e) => ({ value: (e as unknown as { path: string }).path in w.files }) as never)
   on('fs.read', (_$, e) => ({ value: w.files[(e as unknown as { path: string }).path] ?? '' }) as never)
   on('fs.write', (_$, e) => {
@@ -16,7 +16,7 @@ function fakeEngine(on: On, w: World) {
     w.logged.push(String((e as unknown as { text: string }).text))
     return { value: undefined } as never
   })
-  on('tool.call', () => ({ result: { ok: true } }) as never)
+  on('tool.call', () => toolResult as never)
   on('turn.complete', () => ({ text: '' }) as never)
 }
 
@@ -59,6 +59,22 @@ describe('universal-audit-log', () => {
     const recorded = text.trim().split('\n').map((l) => JSON.parse(l) as { event: string; input: Record<string, unknown> })
     const check = recorded.find((r) => r.event === 'tool.check')
     expect(String(check?.input.input)).toContain('run')
+  })
+
+  // A throwing hook is skipped by the engine (fail-open), so a hook's own text
+  // reaches the outcome only through a denial.
+  test('a secret quoted in a denial never reaches the outcome', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    const key = ['sk', 'ant', 'api03', 'FAKE'.repeat(6)].join('-')
+    fakeEngine(on, w, { deny: `refused: ANTHROPIC_API_KEY=${key}` })
+
+    await $.tool.call({ tool: 'Bash', command: 'run' } as never).catch(() => undefined)
+    await $.turn.complete(answered)
+
+    const text = logContent(w) ?? ''
+    expect(text.includes('FAKEFAKE')).toBe(false)
+    const log = text.trim().split('\n').map((l) => JSON.parse(l) as { event: string; outcome: string }).find((r) => r.event === 'tool.call')
+    expect(log?.outcome.startsWith('denied: refused:')).toBe(true)
   })
 
   test('/universal-audit-log off stops recording new lines', async ($, on) => {

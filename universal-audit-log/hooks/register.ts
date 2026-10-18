@@ -75,7 +75,7 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '')
 
 /** What a tool.check input touched (its command, path, pattern...), as Flightdeck's describeInput. */
 function describe(input: object): string {
-  const i = input as Record<string, unknown>
+  const i: Record<string, unknown> = Object.fromEntries(Object.entries(input))
   return str(i.command) || str(i.file_path) || str(i.path) || str(i.pattern) || str(i.url) || str(i.description)
 }
 
@@ -150,10 +150,11 @@ export const register: Register = (on, options) => {
     try {
       const result = await next(e)
       const denied = denialOf(result)
-      if (denied !== undefined) outcome = `denied: ${denied}`
+      // a denial or an error message can quote the command it refused: redacted like the input
+      if (denied !== undefined) outcome = `denied: ${clip(denied)}`
       return result
     } catch (err) {
-      outcome = `threw: ${err instanceof Error ? err.message : String(err)}`
+      outcome = `threw: ${clip(err instanceof Error ? err.message : String(err))}`
       throw err
     } finally {
       const line =
