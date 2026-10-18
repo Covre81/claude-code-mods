@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-const isEnabledRef = atom({ plugin: 'clean-view', key: 'isEnabled' } as const, true)
+const isEnabledRef = atom({ plugin: 'clean-view', key: 'isEnabled' } as const, false)
 
 export type Line = { glyph: string; tool: string; target: string; note?: string }
 
@@ -65,9 +65,10 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-    // ponytail: running/errored/interrupted keep the full block, hiding a failure is the one thing a clean view must not do
     if (e.props.isRunning || e.props.isErrored || e.props.isInterrupted) return next(e)
-    if (!(await read($, isEnabledRef))) return next(e)
+
+    const isEnabled = await $.store.get('isEnabled').catch(() => false)
+    if (!isEnabled) return next(e)
 
     const line = summarize(e.props.tool, e.props.input, e.props.output)
     if (!line) return next(e)
