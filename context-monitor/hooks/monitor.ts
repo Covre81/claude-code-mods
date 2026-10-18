@@ -1,8 +1,8 @@
-import { atom, read, update } from 'claude-code'
+import { read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 /** One switch for painel's band and recording and uso-vivo's box (each file redeclares it); memoria keeps its own (/memoria). */
-const isEnabledRef = atom({ plugin: 'context-monitor', key: 'isEnabled' } as const, true)
+const MON_KEY = 'context-monitor.isEnabled'
 
 export const register: Register = on => {
   // One plugin may hook session.start only once, so every part's command is declared here.
@@ -17,10 +17,10 @@ export const register: Register = on => {
   on('command.run', { command: 'monitor' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
     if (arg !== 'on' && arg !== 'off') {
-      const isEnabled = await read($, isEnabledRef)
+      const isEnabled = await $.settings.get(MON_KEY)
       return { text: `monitor esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /monitor on · /monitor off` }
     }
-    await update($, isEnabledRef, () => arg === 'on')
+    await $.settings.set(MON_KEY, arg === 'on')
     return { text: `monitor ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 }
