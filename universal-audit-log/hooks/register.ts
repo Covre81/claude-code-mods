@@ -49,14 +49,44 @@ const MAX_FIELD = 200
 const encoder = new TextEncoder()
 const bytes = (text: string) => encoder.encode(text).length
 
+// Credentials never reach the file. Patterns from scasella/claude-flightdeck
+// (hooks/core.ts redact) plus the cofre mod's (hooks/secrets.ts PATTERNS):
+// mods are separate packages, so they are copied rather than imported.
+const SECRETS: [RegExp, string][] = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, '•••'],
+  [/(authorization\s*[:=]\s*)(bearer\s+|basic\s+)?\S+/gi, '$1$2•••'],
+  [/\b(bearer)\s+[A-Za-z0-9._~+/-]{8,}=*/gi, '$1 •••'],
+  [/\b(sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs])[-_][A-Za-z0-9_-]{8,}/g, '•••'],
+  [/AIza[\w-]{35}|AKIA[0-9A-Z]{16}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}/g, '•••'],
+  [/((?:api[_-]?key|access[_-]?token|token|secret|password|passwd|pwd)\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
+  [/(--(?:token|password|api-key|secret)[= ])\S+/gi, '$1•••'],
+  [/(\b[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)=)\S+/g, '$1•••'],
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s@]+@/gi, '$1•••@'],
+]
+export const redact = (s: string) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s)
+
+// redact before cutting: a cut token would no longer match its pattern
+const clip = (s: string) => {
+  const r = redact(s)
+  return r.length > MAX_FIELD ? r.slice(0, MAX_FIELD) + '…' : r
+}
+
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+
+/** What a tool.check input touched (its command, path, pattern...), as Flightdeck's describeInput. */
+function describe(input: object): string {
+  const i = input as Record<string, unknown>
+  return str(i.command) || str(i.file_path) || str(i.path) || str(i.pattern) || str(i.url) || str(i.description)
+}
+
 function summarize(e: unknown): Record<string, unknown> {
-  if (!e || typeof e !== 'object') return { value: String(e).slice(0, MAX_FIELD) }
+  if (!e || typeof e !== 'object') return { value: clip(String(e)) }
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(e)) {
-    if (typeof v === 'string') out[k] = v.length > MAX_FIELD ? v.slice(0, MAX_FIELD) + '…' : v
+    if (typeof v === 'string') out[k] = clip(v)
     else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v
     else if (Array.isArray(v)) out[k] = `[array:${v.length}]`
-    else if (v && typeof v === 'object') out[k] = '[object]'
+    else if (v && typeof v === 'object') out[k] = k === 'input' && describe(v) ? clip(describe(v)) : '[object]'
   }
   return out
 }
