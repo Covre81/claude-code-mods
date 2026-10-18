@@ -1,5 +1,5 @@
 // Run with: claude plugin test agent-flow
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import {
@@ -192,6 +192,7 @@ describe('the pane', () => {
 
 describe('on/off toggle', () => {
   test('/agent-flow off refuses to open, closes the pane and stops recording', async ($, on) => {
+    mock.store(on)
     fakeEngine(on)
     await $.command.run({ command: 'agent-flow', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
 
