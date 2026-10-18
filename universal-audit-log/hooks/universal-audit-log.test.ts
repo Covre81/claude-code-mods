@@ -57,6 +57,9 @@ describe('universal-audit-log', () => {
     expect(text.includes('FAKEFAKE')).toBe(false)
     expect(text.includes(aws)).toBe(false)
     const recorded = text.trim().split('\n').map((l) => JSON.parse(l) as { event: string; input: Record<string, unknown> })
+    // the absence checks above hold on an empty log too: the redacted lines must be there
+    const call = recorded.find((r) => r.event === 'tool.call')
+    expect(String(call?.input.command)).toContain('Bearer •••')
     const check = recorded.find((r) => r.event === 'tool.check')
     expect(String(check?.input.input)).toContain('run')
   })
