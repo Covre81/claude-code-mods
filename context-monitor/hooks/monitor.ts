@@ -1,12 +1,18 @@
-import { read, update } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 /** One switch for painel's band and recording and uso-vivo's box (each file redeclares it); memoria keeps its own (/memoria). */
-const MON_KEY = 'context-monitor.isEnabled'
+const isEnabledRef = atom({ plugin: 'context-monitor', key: 'isEnabled' } as const, true)
+const memoriaRef = atom({ plugin: 'context-monitor', key: 'memoriaEnabled' } as const, true)
 
 export const register: Register = on => {
   // One plugin may hook session.start only once, so every part's command is declared here.
   on('session.start', async ($, e, next) => {
+    // $.state is per session; /monitor and /memoria mirror their switch to the store, restored here.
+    const monitor = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof monitor === 'boolean') await update($, isEnabledRef, () => monitor)
+    const memoria = await $.store.get('memoriaEnabled').catch(() => undefined)
+    if (typeof memoria === 'boolean') await update($, memoriaRef, () => memoria)
     await $.command.register({ name: 'monitor', description: 'Liga/desliga a faixa de contexto e uso, o replay e a atividade.', argumentHint: 'on|off' })
     await $.command.register({ name: 'replay', description: 'Mostra, passo a passo, o que o último turno mudou nos arquivos' })
     await $.command.register({ name: 'atividade', description: 'Linha do tempo das ferramentas do último turno, com tokens, custo e limites' })
@@ -17,10 +23,11 @@ export const register: Register = on => {
   on('command.run', { command: 'monitor' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
     if (arg !== 'on' && arg !== 'off') {
-      const isEnabled = await $.settings.get(MON_KEY)
+      const isEnabled = await read($, isEnabledRef)
       return { text: `monitor esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /monitor on · /monitor off` }
     }
-    await $.settings.set(MON_KEY, arg === 'on')
+    await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on')
     return { text: `monitor ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 }

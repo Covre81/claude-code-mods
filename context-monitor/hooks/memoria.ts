@@ -1,7 +1,7 @@
-import { read, update } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-const MEM_KEY = 'context-monitor.memoriaEnabled'
+const isEnabledRef = atom({ plugin: 'context-monitor', key: 'memoriaEnabled' } as const, true)
 
 const API = 'http://127.0.0.1:49374/api/v1'
 const NET_MS = 1500
@@ -102,15 +102,16 @@ export const register: Register = on => {
   on('command.run', { command: 'memoria' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
     if (arg !== 'on' && arg !== 'off') {
-      const isEnabled = await $.settings.get(MEM_KEY)
+      const isEnabled = await read($, isEnabledRef)
       return { text: `memoria esta ${isEnabled ? 'ativada' : 'desativada'}. Uso: /memoria on · /memoria off` }
     }
-    await $.settings.set(MEM_KEY, arg === 'on')
+    await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('memoriaEnabled', arg === 'on') // restored by monitor.ts's session.start
     return { text: `memoria ${arg === 'on' ? 'ativada' : 'desativada'}.` }
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (!(await $.settings.get(MEM_KEY))) return next(e)
+    if (!(await read($, isEnabledRef))) return next(e)
     const text = e.text.trim()
     if (e.origin.kind !== 'composer' || text.startsWith('/') || text.length < MIN_CHARS) return next(e)
     const block = await recall($, text).catch(() => null) // memory is a bonus: any failure leaves the prompt as it was

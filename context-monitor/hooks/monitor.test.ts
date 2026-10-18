@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 test('each command is registered exactly once; /painel and /uso-vivo are gone', async ($, on) => {
   const names: string[] = []
@@ -12,6 +12,7 @@ test('each command is registered exactly once; /painel and /uso-vivo are gone', 
 })
 
 test('/monitor toggles and reports its state', async ($, on) => {
+  mock.store(on)
   expect((await $.command.run({ command: 'monitor', args: 'off', origin: { kind: 'composer' }, presentation: 'text' } as never)).text).toBe('monitor desativado.')
   expect((await $.command.run({ command: 'monitor', args: '', origin: { kind: 'composer' }, presentation: 'text' } as never)).text).toContain('desativado')
 })

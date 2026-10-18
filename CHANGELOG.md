@@ -1,1 +1,1 @@
-- [2026-10-18] Fix: Atoms de estado do context-monitor (monitor/memoria) agora defaultam para false para evitar religamento automático ao reiniciar a sessão.
+- [2026-10-18] Fix: o on/off de cada mod (atom isEnabled em $.state) valia só pela sessão e voltava a "ligado" ao reiniciar. Agora o comando on/off grava também em $.store e o session.start restaura. phase-tracker guarda fase e tarefa do mesmo jeito. Reverte o cedfa12, que chamava $.settings.get/set (não existe).
