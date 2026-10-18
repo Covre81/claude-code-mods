@@ -8,20 +8,26 @@ const isEnabledRef = atom({ plugin: 'phase-tracker', key: 'isEnabled' } as const
 const currentRef = atom({ plugin: 'phase-tracker', key: 'current' } as const, 'idle' as PhaseId)
 const taskRef = atom({ plugin: 'phase-tracker', key: 'task' } as const, null as string | null)
 
+/** Store key of a project's phase: the store is global, so each folder gets its own. */
+export const phaseKey = (cwd: string) => `phase:${cwd.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()}`
+
+// Set at session.start (which re-fires on reload); saves go to the project the phase was loaded from, even after a /cd.
+// ponytail: keyed by the start folder, a session opened in a subfolder is a separate project; walk up to the git root if that bites.
+let projectKey = phaseKey('')
+
 // $.state is per session: phase and task are mirrored to the store and restored at session.start.
 async function savePhase($: EngineInterface) {
-  await $.store.set('phase', { current: await read($, currentRef), task: await read($, taskRef) })
+  await $.store.set(projectKey, { current: await read($, currentRef), task: await read($, taskRef) })
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
     if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
-    const phase = (await $.store.get('phase').catch(() => undefined)) as { current?: PhaseId; task?: string | null } | undefined
-    if (phase?.current) {
-      await update($, currentRef, () => phase.current!)
-      await update($, taskRef, () => phase.task ?? null)
-    }
+    projectKey = phaseKey(e.cwd)
+    const phase = (await $.store.get(projectKey).catch(() => undefined)) as { current?: PhaseId; task?: string | null } | undefined
+    await update($, currentRef, () => phase?.current ?? 'idle')
+    await update($, taskRef, () => phase?.task ?? null)
     await $.command.register({
       name: 'fase',
       description: 'Acompanha e gerencia a fase da tarefa atual (spec, test, code, verify, done, next, reset)',

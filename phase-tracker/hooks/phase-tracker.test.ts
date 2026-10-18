@@ -1,6 +1,37 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { formatBadge, nextPhase, parsePhaseArgs } from './phases'
+import { phaseKey } from './register'
+
+test('phaseKey: same folder, same key, however it is spelled', () => {
+  expect(phaseKey('C:\\Dev\\ChalkySite\\')).toBe(phaseKey('c:/dev/chalkysite'))
+  expect(phaseKey('C:/Dev/ChalkySite')).not.toBe(phaseKey('C:/Dev/cxc-app'))
+})
+
+test('each project keeps its own phase across restarts', async ($, on) => {
+  const saved = new Map<string, unknown>()
+  on('store.get', (_$, e) => ({ value: saved.get(e.key) }) as never)
+  on('store.set', (_$, e) => {
+    saved.set(e.key, e.value)
+    return { value: undefined } as never
+  })
+  on('command.register', () => ({ value: undefined }) as never)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }) as never)
+  const start = (cwd: string) => $.session.start({ cwd, surface: 'terminal', isInteractive: true } as never)
+  const fase = async (args: string) =>
+    String(((await $.command.run({ command: 'fase', args, origin: { kind: 'composer' }, presentation: 'text' } as never)) as { text?: string }).text)
+
+  // /fase next advances from whatever session.start restored, so its answer shows what came back.
+  await start('C:/Dev/ChalkySite')
+  await fase('code Billing')
+  await start('C:/Dev/cxc-app')
+  expect(await fase('next')).toBe('Avançado para a fase: [1/4 Spec]')
+  await fase('test Carteira')
+  await start('C:/Dev/ChalkySite')
+  expect(await fase('next')).toBe('Avançado para a fase: [4/4 Verify] Billing')
+  await start('C:/Dev/cxc-app')
+  expect(await fase('next')).toBe('Avançado para a fase: [3/4 Code] Carteira')
+})
 
 describe('phase-tracker: transição de fases', () => {
   test('nextPhase avança sequencialmente pelas 4 etapas do Karpathy', () => {
