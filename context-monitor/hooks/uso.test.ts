@@ -19,7 +19,7 @@ describe('uso-vivo', () => {
   test('usageLine lists 5h, 7d and cost; missing limits are skipped', () => {
     const l = usageLine([{ kind: 'five_hour', percentUsed: 6, resetsAt: '2026-10-11T01:10:00.000Z' }], 1.234)
     expect(l.length).toBe(2)
-    expect(l[0].text.startsWith('5h █')).toBe(true)
-    expect(l[1].text).toBe('sessão $1.23')
+    expect(l[0]!.text.startsWith('5h █')).toBe(true)
+    expect(l[1]!.text).toBe('sessão $1.23')
   })
 })

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Engine, Hook, MatchedHook, Register } from 'claude-code'
+import type { EngineInterface, Hook, MatchedHook, Register } from 'claude-code'
 
 import type { Cat, Ctx, Limit } from '../types'
 // Same switch as monitor.ts (/monitor); the scan wants each file's refs declared in it.
@@ -55,7 +55,7 @@ export function topCats(cats: Cat[], n = 4): string {
     .join(' · ')
 }
 
-async function refresh($: Engine, breakdown: boolean) {
+async function refresh($: EngineInterface, breakdown: boolean) {
   const u = await $.session.usage(breakdown ? { breakdown: 'summary' } : undefined)
   await update($, limits, () => u.rateLimits)
   await update($, cost, () => u.cost?.usd ?? null)
