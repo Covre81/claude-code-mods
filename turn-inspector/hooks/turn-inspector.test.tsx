@@ -1,5 +1,5 @@
 // Run with: claude plugin test turn-inspector
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import {
@@ -146,7 +146,7 @@ function fakeEngine(on: On) {
       rateLimits: [],
     },
   }) as never)
-  on('ui.open', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.invalidate', () => ({ value: undefined }))
   on('ui.log', () => ({ value: undefined }))
@@ -218,20 +218,21 @@ describe('the pane', () => {
 
 describe('on/off toggle', () => {
   test('/turns off refuses to open, closes the pane and stops recording turns', async ($, on) => {
+    mock.store(on)
     fakeEngine(on)
     await $.command.run({ command: 'turns', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
 
-    const off = await $.command.run({ command: 'turns', args: 'off' })
+    const off = await $.command.run({ command: 'turns', args: 'off', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
     expect(off.text).toBe('turn-inspector desativado.')
 
-    const reopen = await $.command.run({ command: 'turns', args: '' })
+    const reopen = await $.command.run({ command: 'turns', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
     expect(reopen.text).toBe('turn-inspector esta desativado. Uso: /turns on')
 
     // turns while disabled are not recorded
     await $.turn.start({ text: 'ignored while off', turnId: 't-off' })
     await step($, 0)
 
-    const on_ = await $.command.run({ command: 'turns', args: 'on' })
+    const on_ = await $.command.run({ command: 'turns', args: 'on', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
     expect(on_.text).toBe('turn-inspector ativado.')
 
     const reopened = await $.command.run({ command: 'turns', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
