@@ -1,5 +1,5 @@
 // Run with: claude plugin test git-sidebar
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import {
@@ -49,28 +49,28 @@ describe('git.ts parsers', () => {
     expect(wts[0]).toEqual(expect.objectContaining({ path: MAIN, branch: 'main', detached: false }))
     expect(wts[1]).toEqual(expect.objectContaining({ branch: 'feature/login', locked: true }))
     expect(wts[2]).toEqual(expect.objectContaining({ detached: true, prunable: true }))
-    expect(wts[2].branch).toBeUndefined()
+    expect(wts[2]!.branch).toBeUndefined()
   })
 
   test('for-each-ref lines and tracking', () => {
     const bs = parseBranches(BRANCH_OUT)
     expect(bs.map(b => b.name)).toEqual(['main', 'feature/login', 'spike', 'old'])
     expect(bs[1]).toEqual(expect.objectContaining({ ahead: 3, behind: 1, worktree: FEATURE }))
-    expect(bs[2].upstream).toBeUndefined()
-    expect(bs[2].worktree).toBeUndefined()
+    expect(bs[2]!.upstream).toBeUndefined()
+    expect(bs[2]!.worktree).toBeUndefined()
     expect(parseTrack('gone').gone).toBe(true)
-    expect(trackLabel(bs[0])).toBe('↓2')
-    expect(trackLabel(bs[1])).toBe('↑3 ↓1')
-    expect(trackLabel(bs[2])).toBe('')
-    expect(trackLabel(bs[3])).toBe('gone')
+    expect(trackLabel(bs[0]!)).toBe('↓2')
+    expect(trackLabel(bs[1]!)).toBe('↑3 ↓1')
+    expect(trackLabel(bs[2]!)).toBe('')
+    expect(trackLabel(bs[3]!)).toBe('gone')
     expect(trackLabel({ ahead: 0, behind: 0, gone: false, upstream: 'origin/x' })).toBe('✓')
   })
 
   test('branch actions depend on where the branch is checked out', () => {
     const snap = { root: `${MAIN}/`, worktrees: parseWorktrees(WORKTREE_OUT), branches: parseBranches(BRANCH_OUT) }
-    expect(branchAction(snap, snap.branches[0])).toEqual({ kind: 'current' })
-    expect(branchAction(snap, snap.branches[1])).toEqual({ kind: 'open', path: FEATURE })
-    expect(branchAction(snap, snap.branches[2])).toEqual({ kind: 'switch' })
+    expect(branchAction(snap, snap.branches[0]!)).toEqual({ kind: 'current' })
+    expect(branchAction(snap, snap.branches[1]!)).toEqual({ kind: 'open', path: FEATURE })
+    expect(branchAction(snap, snap.branches[2]!)).toEqual({ kind: 'switch' })
   })
 
   test('small helpers', () => {
@@ -91,20 +91,20 @@ type Calls = { cd: string[]; switched: string[]; toasts: string[]; dirty: boolea
 function fakeGit(on: On, calls: Calls) {
   on('process.run', async ($, e) => {
     const argv = e.argv.join(' ')
-    const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '' } })
+    const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (argv === 'git rev-parse --show-toplevel') return ok(`${MAIN}\n`)
     if (argv === 'git worktree list --porcelain') return ok(WORKTREE_OUT)
     if (argv.startsWith('git for-each-ref')) return ok(BRANCH_OUT)
     if (argv === 'git status --porcelain') return ok(calls.dirty && !e.init?.cwd ? ' M x.ts\n' : '')
     if (argv.startsWith('git log')) return ok('abc1234\tadd spike\t3 days ago\n')
     if (argv.startsWith('git switch')) {
-      calls.switched.push(e.argv[e.argv.length - 1])
+      calls.switched.push(e.argv.at(-1)!)
       return ok('')
     }
-    return { value: { exitCode: 1, stdout: '', stderr: `unexpected ${argv}` } }
+    return { value: { exitCode: 1, stdout: '', stderr: `unexpected ${argv}`, isStdoutTruncated: false, isStderrTruncated: false } }
   })
   // the display calls the engine serves: answered here, since a test draws no screen
-  on('ui.open', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', ($, e) => {
@@ -184,18 +184,19 @@ describe('the pane', () => {
 
 describe('on/off toggle', () => {
   test('/git-sidebar off refuses to open and closes the pane if open', async ($, on) => {
+    mock.store(on)
     const calls: Calls = { cd: [], switched: [], toasts: [], dirty: false }
     fakeGit(on, calls)
     await openSidebar($)
 
-    const off = await $.command.run({ command: 'git-sidebar', args: 'off' })
+    const off = await $.command.run({ command: 'git-sidebar', args: 'off', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
     expect(off.text).toBe('git-sidebar desativado.')
 
     const reopen = await openSidebar($)
     expect(reopen.text).toBe('git-sidebar esta desativado. Uso: /git-sidebar on')
 
     // on opens the pane too, called bare the way the meus-mods toggle calls it
-    const on_ = await $.command.run({ command: 'git-sidebar', args: 'on' })
+    const on_ = await $.command.run({ command: 'git-sidebar', args: 'on', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
     expect(on_.text).toContain('git-sidebar ativado.')
     expect(on_.text).toContain('worktrees')
   })
