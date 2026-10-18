@@ -45,4 +45,20 @@ describe('render', () => {
     expect(await summary()).toBeUndefined()
     await row.unmount()
   })
+
+  test('the result block hides under a summarized row, but an error or an interrupt still shows whole', async ($, on) => {
+    mock.store(on)
+    on('ui.render', ($, e) => h($.ui.resolve(e).Text, {}, 'ENGINE') as never)
+    await $.command.run({ command: 'clean-view', args: 'on', ...AT })
+    const engineDrew = async (output: unknown, isErrored = false) => {
+      const r = await $.ui.mount({ plugin: 'clean-view', surface: 'terminal', component: 'ToolResult', requestId: 'toolu_1', props: { tool_use_id: 'toolu_1', tool: 'Bash', output, isErrored } })
+      const found = await r.find({ type: 'Text', text: 'ENGINE' })
+      await r.unmount()
+      return found !== undefined
+    }
+
+    expect(await engineDrew({ stdout: 'x' })).toBe(false)
+    expect(await engineDrew({ stdout: 'x' }, true)).toBe(true)
+    expect(await engineDrew({ stdout: 'x', interrupted: true })).toBe(true)
+  })
 })

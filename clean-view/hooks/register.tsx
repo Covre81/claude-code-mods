@@ -87,7 +87,9 @@ export const register: Register = on => {
   // à parte, desenhado embaixo da linha: sem isto o resumo vinha com o bloco
   // inteiro logo abaixo. Erro continua aparecendo inteiro.
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
-    if (e.props.isErrored) return next(e)
+    // ToolResult has no isInterrupted: an interrupted Bash says so in its output
+    const o = e.props.output
+    if (e.props.isErrored || (typeof o === 'object' && o !== null && 'interrupted' in o && o.interrupted === true)) return next(e)
     if (!(await read($, isEnabledRef)) || !summarize(e.props.tool, {}, e.props.output)) return next(e)
     const { Box } = $.ui.resolve(e)
     return <Box />
