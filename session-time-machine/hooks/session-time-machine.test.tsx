@@ -1,5 +1,5 @@
 // Run with: claude plugin test session-time-machine
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import {
   buildTimeline,
@@ -155,7 +155,7 @@ describe('the pane', () => {
       return { value: undefined }
     })
     on('command.register', () => ({ value: undefined }) as never)
-    on('ui.open', () => ({ value: undefined }))
+    on('ui.open', () => ({ value: { isPlaced: true } }))
     on('ui.close', () => ({ value: undefined }))
     on('ui.invalidate', () => ({ value: undefined }))
     on('ui.status', () => ({ value: undefined }))
@@ -217,7 +217,8 @@ describe('the pane', () => {
     world(on, fills, wrote)
     on('ui.copy', () => ({ value: { isCopied: true } }) as never)
     const out = (await $.command.run({ command: 'timemachine', args: 'fork 2 try the other approach', origin: { kind: 'composer' } } as never)) as { text?: string }
-    expect(wrote[0]).toMatch(/^\/home\/me\/\.claude\/projects\/-work\/[0-9a-f-]{36}\.jsonl$/)
+    // $.fs resolves the path per OS: C:\home\me\... on Windows
+    expect(wrote[0]?.replace(/\\/g, '/')).toMatch(/^(?:[A-Z]:)?\/home\/me\/\.claude\/projects\/-work\/[0-9a-f-]{36}\.jsonl$/)
     expect(out.text).toContain("claude --resume ")
     expect(out.text).toContain("'try the other approach'")
     expect(out.text).toContain('resume command copied')
@@ -232,13 +233,14 @@ describe('on/off toggle', () => {
     on('fs.read', () => ({ value: session().map(r => JSON.stringify(r)).join('\n') }))
     on('fs.write', () => ({ value: undefined }))
     on('command.register', () => ({ value: undefined }) as never)
-    on('ui.open', () => ({ value: undefined }))
+    on('ui.open', () => ({ value: { isPlaced: true } }))
     on('ui.close', () => ({ value: undefined }))
     on('ui.invalidate', () => ({ value: undefined }))
     on('ui.status', () => ({ value: undefined }))
   }
 
   test('/timemachine off refuses every other argument until /timemachine on', async ($, on) => {
+    mock.store(on)
     world(on)
     const off = (await $.command.run({ command: 'timemachine', args: 'off', origin: { kind: 'composer' } } as never)) as { text?: string }
     expect(off.text).toBe('session-time-machine desativado.')
