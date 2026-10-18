@@ -124,12 +124,16 @@ function fakeEngine(on: On) {
       rateLimits: [],
     },
   }) as never)
-  on('ui.open', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: undefined }) as never)
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.invalidate', () => ({ value: undefined }))
   on('ui.log', () => ({ value: undefined }))
 }
+
+// what the engine's call sites pass along with every command and spawn
+const AT = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } } as const
+const SPAWNED = { tool_use_id: 'toolu_1', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'm', background: false, fork: false } as const
 
 const PANE_PROPS = {
   title: 'agents',
@@ -154,18 +158,17 @@ describe('the pane', () => {
     const opened = await $.command.run({
       command: 'agent-flow',
       args: '',
-      origin: { kind: 'composer' },
-      presentation: { isFullscreen: true, columns: 200 },
+      ...AT,
     })
     expect(opened.text).toContain('agents so far')
 
     await $.turn.start({ text: 'refactor the auth module', turnId: 't1' })
     await drain($)
-    const first = await $.agent.spawn({ prompt: 'Map the auth module.\nList every file.', description: 'map auth', subagentType: 'Explore' })
+    const first = await $.agent.spawn({ prompt: 'Map the auth module.\nList every file.', description: 'map auth', subagentType: 'Explore', ...SPAWNED })
     expect(first.agentId).toBe('sub-1')
     await drain($, 'sub-1')
     await $.tool.call({ tool: 'Read', file_path: 'src/auth.ts', agentId: 'sub-1' } as never)
-    await $.agent.spawn({ prompt: 'Check tests.', description: 'nested', subagentType: 'general-purpose', parentAgentId: 'sub-1' } as never)
+    await $.agent.spawn({ prompt: 'Check tests.', description: 'nested', subagentType: 'general-purpose', parentAgentId: 'sub-1', ...SPAWNED })
     await $.turn.complete({ answer: 'auth lives in src/auth.ts and src/session.ts', durationMs: 4200, isAborted: false, turnId: 't1', agentId: 'sub-1', reason: 'answer' })
 
     const ui = await $.ui.mount({ plugin: 'agent-flow', surface: 'terminal', component: 'Pane', requestId: 'agent-flow', props: PANE_PROPS })
@@ -194,21 +197,21 @@ describe('on/off toggle', () => {
   test('/agent-flow off refuses to open, closes the pane and stops recording', async ($, on) => {
     mock.store(on)
     fakeEngine(on)
-    await $.command.run({ command: 'agent-flow', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
+    await $.command.run({ command: 'agent-flow', args: '', ...AT })
 
-    const off = await $.command.run({ command: 'agent-flow', args: 'off' })
+    const off = await $.command.run({ command: 'agent-flow', args: 'off', ...AT })
     expect(off.text).toBe('agent-flow desativado.')
 
-    const reopen = await $.command.run({ command: 'agent-flow', args: '' })
+    const reopen = await $.command.run({ command: 'agent-flow', args: '', ...AT })
     expect(reopen.text).toBe('agent-flow esta desativado. Uso: /agent-flow on')
 
     // spawns and turns while disabled are not recorded
     await $.turn.start({ text: 'ignored while off', turnId: 't-off' })
     await drain($)
-    await $.agent.spawn({ prompt: 'ignored', description: 'ignored', subagentType: 'Explore' })
+    await $.agent.spawn({ prompt: 'ignored', description: 'ignored', subagentType: 'Explore', ...SPAWNED })
 
     // on opens the pane too, called bare the way the meus-mods toggle calls it
-    const on_ = await $.command.run({ command: 'agent-flow', args: 'on' })
+    const on_ = await $.command.run({ command: 'agent-flow', args: 'on', ...AT })
     expect(on_.text).toContain('agent-flow ativado.')
     expect(on_.text).toContain('0 agents so far')
   })
