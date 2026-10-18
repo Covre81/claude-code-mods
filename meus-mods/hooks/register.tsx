@@ -7,11 +7,13 @@ const BG_ALT = '#171b26'
 const TOGGLE_ON = '#2ecc71'
 const TOGGLE_OFF = '#ff5252'
 const TOGGLE_KNOB = '#f4f4f4'
-const TOGGLE_TRAVEL = '  '
-// ponytail: semicírculos powerline da Nerd Font (U+E0B6/U+E0B4), que enchem a
-// altura da célula. Sem Nerd Font viram quadradinho; volte a ◖◗ nesse caso.
-const TOGGLE_CAP_LEFT = ''
-const TOGGLE_CAP_RIGHT = ''
+// Blocos de cor de fundo, sem glifo nenhum: funciona em qualquer fonte, de
+// qualquer superfície (terminal, desktop, vscode, mobile). A versão anterior
+// usava glifos de meio-círculo para a bolinha, mas isso depende da fonte do
+// host desenhar os dois meios encostados — em algumas fontes vira quadradinho,
+// em outras vira dois meios soltos sem preenchimento.
+const TOGGLE_FILL = '   '
+const TOGGLE_KNOB_BLOCK = '  '
 
 const cleanViewRef = { plugin: 'clean-view', key: 'isEnabled' } as const
 const cacheFrioRef = { plugin: 'cache-frio', key: 'isEnabled' } as const
@@ -124,33 +126,23 @@ export const register: Register = on => {
       void $.command.run({ command: row.command, args: row.isEnabled ? 'off' : 'on' })
     }
 
-    // Pílula: trilha com fundo colorido e duas tampas semicirculares
-    // com a cor da trilha no texto, o que dá a ponta arredondada. Um Button
-    // só aceita string/Text como filho, então tudo aninha em Text. A bolinha
-    // é um círculo branco de 2 células que ocupa a ponta do lado ativo: a
-    // metade de fora fica no lugar da tampa, então encosta na borda de verdade.
-    // Largura total: 5 células.
+    // Pílula: faixa de cor de fundo + bolinha, sem glifo nenhum. Dois Text
+    // fixos (sem array, sem loop) — o motor de UI dos paineis não é React de
+    // verdade e não aceita lista de elementos como filho; array quebrava o
+    // render e o toggle inteiro desaparecia.
     const Toggle = (row: Row) => {
       const track = row.isEnabled ? TOGGLE_ON : TOGGLE_OFF
       return (
         <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
           {row.isEnabled ? (
             <Text>
-              <Text color={track}>{TOGGLE_CAP_LEFT}</Text>
-              <Text backgroundColor={track}>
-                {TOGGLE_TRAVEL}
-                <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_LEFT}</Text>
-              </Text>
-              <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_RIGHT}</Text>
+              <Text backgroundColor={track}>{TOGGLE_FILL}</Text>
+              <Text backgroundColor={TOGGLE_KNOB}>{TOGGLE_KNOB_BLOCK}</Text>
             </Text>
           ) : (
             <Text>
-              <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_LEFT}</Text>
-              <Text backgroundColor={track}>
-                <Text color={TOGGLE_KNOB}>{TOGGLE_CAP_RIGHT}</Text>
-                {TOGGLE_TRAVEL}
-              </Text>
-              <Text color={track}>{TOGGLE_CAP_RIGHT}</Text>
+              <Text backgroundColor={TOGGLE_KNOB}>{TOGGLE_KNOB_BLOCK}</Text>
+              <Text backgroundColor={track}>{TOGGLE_FILL}</Text>
             </Text>
           )}
         </Button>
