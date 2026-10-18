@@ -1,5 +1,5 @@
 // Run with: claude plugin test webfetch-cache
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 type World = { fetched: number[] }
@@ -41,6 +41,7 @@ describe('webfetch-cache', () => {
   })
 
   test('/webfetch-cache off clears the cache and stops short-circuiting WebFetch', async ($, on) => {
+    mock.store(on)
     const w: World = { fetched: [] }
     fakeEngine(on, w)
     await fetch($ as never)

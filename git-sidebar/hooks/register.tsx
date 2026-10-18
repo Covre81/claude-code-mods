@@ -110,6 +110,8 @@ export const register: Register = (on, options) => {
   const openOnStart = options.openOnStart === true
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     const r = await next(e)
     await $.command
       .register({
@@ -140,6 +142,7 @@ export const register: Register = (on, options) => {
 
     if (arg === 'off') {
       await update($, isEnabledRef, () => false)
+      await $.store.set('isEnabled', false) // $.state is per session; the store survives a restart
       if (isOpen) {
         await $.ui.close({ id: PANE }).catch(() => undefined)
         isOpen = false
@@ -149,8 +152,10 @@ export const register: Register = (on, options) => {
     }
 
     // on also opens the pane: it is never drawn unasked, so a bare state flip showed nothing
-    if (arg === 'on') await update($, isEnabledRef, () => true)
-    else if (!(await read($, isEnabledRef))) {
+    if (arg === 'on') {
+      await update($, isEnabledRef, () => true)
+      await $.store.set('isEnabled', true)
+    } else if (!(await read($, isEnabledRef))) {
       return { text: 'git-sidebar esta desativado. Uso: /git-sidebar on' }
     }
 

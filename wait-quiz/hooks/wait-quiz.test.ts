@@ -111,3 +111,25 @@ test('terminal: /cartao and the tool save to the store, never to disk', async ($
   expect(JSON.stringify(tool).includes('2 no deck')).toBe(true)
   expect(writes).toEqual([])
 })
+
+test('off survives a restart: the store is read back at session.start', async ($, on) => {
+  const saved = new Map<string, unknown>()
+  on('store.get', (_$, e) => ({ value: saved.get(e.key) }) as never)
+  on('store.set', (_$, e) => {
+    saved.set(e.key, e.value)
+    return { value: undefined } as never
+  })
+  on('command.register', () => ({ value: undefined }) as never)
+  on('tool.register', () => ({ value: { tool: 'mcp__wait-quiz__salvar_cartao' } }) as never)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }) as never)
+  const status = async () => String(((await $.command.run({ command: 'wait-quiz', args: '', origin: { kind: 'composer' }, presentation: 'text' } as never)) as { text?: string }).text)
+
+  await $.command.run({ command: 'wait-quiz', args: 'off', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  expect(saved.get('isEnabled')).toBe(false)
+
+  // A new session: $.state starts over at the atom's default, the store keeps false.
+  await $.command.run({ command: 'wait-quiz', args: 'on', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  saved.set('isEnabled', false)
+  await $.session.start({ cwd: 'C:/x', surface: 'terminal', isInteractive: true } as never)
+  expect(await status()).toContain('desativado')
+})

@@ -154,6 +154,8 @@ export const register: Register = (on, options) => {
   }
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     isEnabled = await read($, isEnabledRef)
     await $.command.register({
       name: 'timemachine',
@@ -224,6 +226,7 @@ export const register: Register = (on, options) => {
     if (raw === 'on' || raw === 'off') {
       isEnabled = raw === 'on'
       await update($, isEnabledRef, () => isEnabled)
+      await $.store.set('isEnabled', isEnabled) // $.state is per session; the store survives a restart
       if (!isEnabled) {
         await $.ui.close({ id: PANE }).catch(() => undefined)
         $.ui.status(undefined)

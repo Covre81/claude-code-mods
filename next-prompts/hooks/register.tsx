@@ -168,6 +168,8 @@ export const register: Register = (on, options) => {
   let generation = 0
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'next-prompts',
       description: 'Liga/desliga as sugestões de próximo passo acima do prompt.',
@@ -183,6 +185,7 @@ export const register: Register = (on, options) => {
       return { text: `next-prompts esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /next-prompts on · /next-prompts off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     return { text: `next-prompts ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 

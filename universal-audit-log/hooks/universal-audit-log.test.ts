@@ -1,5 +1,5 @@
 // Run with: claude plugin test universal-audit-log
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 type World = { files: Record<string, string>; logged: string[] }
@@ -41,6 +41,7 @@ describe('universal-audit-log', () => {
   })
 
   test('/universal-audit-log off stops recording new lines', async ($, on) => {
+    mock.store(on)
     const w: World = { files: {}, logged: [] }
     fakeEngine(on, w)
 

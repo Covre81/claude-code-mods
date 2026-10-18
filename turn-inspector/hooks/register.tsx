@@ -83,6 +83,8 @@ export const register: Register = (on, options) => {
   const openOnStart = options.openOnStart === true
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     const r = await next(e)
     ledger = createLedger()
     live = undefined
@@ -117,6 +119,7 @@ export const register: Register = (on, options) => {
     if (arg === 'on' || arg === 'off') {
       isEnabled = arg === 'on'
       await update($, isEnabledRef, () => isEnabled)
+      await $.store.set('isEnabled', isEnabled) // $.state is per session; the store survives a restart
       if (!isEnabled && isOpen) {
         await $.ui.close({ id: PANE }).catch(() => undefined)
         isOpen = false

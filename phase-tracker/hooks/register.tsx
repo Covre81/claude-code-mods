@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { PhaseId } from '../types'
 import { formatBadge, nextPhase, parsePhaseArgs } from './phases'
@@ -8,8 +8,20 @@ const isEnabledRef = atom({ plugin: 'phase-tracker', key: 'isEnabled' } as const
 const currentRef = atom({ plugin: 'phase-tracker', key: 'current' } as const, 'idle' as PhaseId)
 const taskRef = atom({ plugin: 'phase-tracker', key: 'task' } as const, null as string | null)
 
+// $.state is per session: phase and task are mirrored to the store and restored at session.start.
+async function savePhase($: EngineInterface) {
+  await $.store.set('phase', { current: await read($, currentRef), task: await read($, taskRef) })
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
+    const phase = (await $.store.get('phase').catch(() => undefined)) as { current?: PhaseId; task?: string | null } | undefined
+    if (phase?.current) {
+      await update($, currentRef, () => phase.current!)
+      await update($, taskRef, () => phase.task ?? null)
+    }
     await $.command.register({
       name: 'fase',
       description: 'Acompanha e gerencia a fase da tarefa atual (spec, test, code, verify, done, next, reset)',
@@ -25,12 +37,14 @@ export const register: Register = on => {
     if (parsed.action === 'on' || parsed.action === 'off') {
       const isEnabled = parsed.action === 'on'
       await update($, isEnabledRef, () => isEnabled)
+      await $.store.set('isEnabled', isEnabled) // $.state is per session; the store survives a restart
       return { text: `phase-tracker ${isEnabled ? 'ativado' : 'desativado'}.` }
     }
 
     if (parsed.action === 'reset') {
       await update($, currentRef, () => 'idle')
       await update($, taskRef, () => null)
+      await savePhase($)
       return { text: 'Fase resetada para idle.' }
     }
 
@@ -38,6 +52,7 @@ export const register: Register = on => {
       const curr = await read($, currentRef)
       const next = nextPhase(curr)
       await update($, currentRef, () => next)
+      await savePhase($)
       const task = await read($, taskRef)
       return { text: `Avançado para a fase: ${formatBadge(next, task)}` }
     }
@@ -45,6 +60,7 @@ export const register: Register = on => {
     if (parsed.phase) {
       await update($, currentRef, () => parsed.phase!)
       await update($, taskRef, () => parsed.task ?? null)
+      await savePhase($)
       return { text: `Fase definida: ${formatBadge(parsed.phase, parsed.task ?? null)}` }
     }
 

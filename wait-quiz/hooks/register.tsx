@@ -112,6 +112,8 @@ const label = (c: Card) => `${NAME[c.src]}${c.topic ? ` · ${c.topic}` : ''}`
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({ name: 'cartao', description: 'Salva um cartão de estudo: /cartao frente | verso | tópico' })
     await $.tool.register({
       name: 'salvar_cartao',
@@ -143,6 +145,7 @@ export const register: Register = on => {
       return { text: `wait-quiz esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /wait-quiz on · /wait-quiz off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     return { text: `wait-quiz ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 

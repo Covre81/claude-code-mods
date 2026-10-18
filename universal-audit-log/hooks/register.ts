@@ -82,6 +82,8 @@ export const register: Register = (on, options) => {
   let flushing: Promise<void> = Promise.resolve()
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'universal-audit-log',
       description: 'Liga/desliga o registro de auditoria de todos os eventos em JSONL.',
@@ -97,6 +99,7 @@ export const register: Register = (on, options) => {
       return { text: `universal-audit-log esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /universal-audit-log on · /universal-audit-log off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     return { text: `universal-audit-log ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 

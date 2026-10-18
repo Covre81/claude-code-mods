@@ -17,6 +17,8 @@ export const register: Register = (on, options) => {
   const maxEntries = typeof options.maxEntries === 'number' ? options.maxEntries : 200
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'webfetch-cache',
       description: 'Liga/desliga o cache de WebFetch repetido na mesma sessão.',
@@ -32,6 +34,7 @@ export const register: Register = (on, options) => {
       return { text: `webfetch-cache esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /webfetch-cache on · /webfetch-cache off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     if (arg === 'off') cache.clear()
     return { text: `webfetch-cache ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })

@@ -43,6 +43,8 @@ export const register: Register = on => {
   jobs.clear()
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'delegation-dock',
       description: 'Liga/desliga a linha de status das delegações (agy/codex/ollama).',
@@ -58,6 +60,7 @@ export const register: Register = on => {
       return { text: `delegation-dock esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /delegation-dock on · /delegation-dock off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     if (arg === 'off') $.ui.status(undefined)
     return { text: `delegation-dock ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })

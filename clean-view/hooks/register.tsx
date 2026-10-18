@@ -43,6 +43,8 @@ export function summarize(tool: string, input: unknown, output: unknown): Line |
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'clean-view',
       description: 'Liga/desliga o clean-view: resume cada chamada de ferramenta numa linha.',
@@ -58,6 +60,7 @@ export const register: Register = on => {
       return { text: `clean-view esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /clean-view on · /clean-view off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     return { text: `clean-view ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 

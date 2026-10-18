@@ -27,6 +27,8 @@ export const register: Register = on => {
   let lastAnswerAt: number | undefined
 
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'cache-frio',
       description: 'Liga/desliga o aviso de cache frio antes de mandar um prompt caro.',
@@ -42,6 +44,7 @@ export const register: Register = on => {
       return { text: `cache-frio esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /cache-frio on · /cache-frio off` }
     }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     return { text: `cache-frio ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 

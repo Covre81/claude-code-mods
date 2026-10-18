@@ -25,6 +25,8 @@ let lastModel: string | undefined
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
     await $.command.register({
       name: 'telemetria',
       description: 'Liga/desliga a hora nas respostas e o aviso de troca de modelo.',
@@ -37,6 +39,7 @@ export const register: Register = on => {
     const arg = e.args.trim().toLowerCase()
     if (arg !== 'on' && arg !== 'off') return { text: 'Uso: /telemetria on|off' }
     await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
     return { text: `session-telemetry ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 
