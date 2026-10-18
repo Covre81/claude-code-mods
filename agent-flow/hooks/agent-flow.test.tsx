@@ -124,7 +124,7 @@ function fakeEngine(on: On) {
       rateLimits: [],
     },
   }) as never)
-  on('ui.open', () => ({ value: undefined }) as never)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.invalidate', () => ({ value: undefined }))
