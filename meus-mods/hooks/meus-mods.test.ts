@@ -67,3 +67,13 @@ test('mods aparecem em ordem alfabética', async ($, on) => {
 
   expect(names).toEqual(['alfa', 'meio', 'zeta'])
 })
+
+test('clean-view sem estado salvo aparece desligado, como o default dele', async ($, on) => {
+  on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
+  on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)
+  register(on, {})
+
+  const mounted = await $.ui.mount({ plugin: 'meus-mods', surface: 'terminal', component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
+
+  expect(await mounted.find({ type: 'Text', text: '0 de 1 mods ativos' })).toBeDefined()
+})
