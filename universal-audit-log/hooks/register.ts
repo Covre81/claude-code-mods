@@ -22,7 +22,7 @@
  * against Anthropic's declarations: https://github.com/anthropics/claude-code/tree/main/mods
  *
  * Options:
- *   path:       string    JSONL file, relative to the working directory (default ".claude/logs/mods-audit.jsonl")
+ *   path:       string    JSONL file, relative to the working directory (default <CLAUDE_CONFIG_DIR or ~/.claude>/logs/mods-audit.jsonl)
  *   skipEvents: string    events not to record, comma-separated (default: the render / log chatter)
  *   flushEvery: number    flush after this many buffered lines (default 50)
  *   maxBytes:   number    keep the file under this many UTF-8 bytes, dropping the oldest lines (default 2 MiB, at most 3 MiB)
@@ -31,7 +31,7 @@
  * MIT licensed. Added: an isEnabled toggle (/universal-audit-log on|off) so meus-mods can control it.
  */
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 const isEnabledRef = atom({ plugin: 'universal-audit-log', key: 'isEnabled' } as const, true)
 
@@ -96,8 +96,27 @@ function denialOf(result: unknown): string | undefined {
   return undefined
 }
 
+/**
+ * The default log, absolute under the Claude config dir: a path relative to the
+ * working directory scattered one log per folder a session was opened in.
+ * Falls back to that relative path only when no home can be found.
+ */
+async function defaultLogPath($: EngineInterface): Promise<string> {
+  try {
+    const explicit = await $.env.get('CLAUDE_CONFIG_DIR')
+    // The engine does not hand HOME to mods on Windows, hence USERPROFILE.
+    const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+    const dir = explicit || (home ? `${home}/.claude` : '')
+    if (dir) return `${dir.replace(/\\/g, '/')}/logs/mods-audit.jsonl`
+  } catch {
+    // env withheld: the relative path below
+  }
+  return '.claude/logs/mods-audit.jsonl'
+}
+
 export const register: Register = (on, options) => {
-  const logPath = typeof options.path === 'string' ? options.path : '.claude/logs/mods-audit.jsonl'
+  // Resolved on the first flush, since the default needs $.
+  let logPath = typeof options.path === 'string' ? options.path : ''
   const skip = new Set<string>(
     strings(options.skipEvents) ??
       // turn.step is a stream (an async generator hook); a plain hook passes it through untouched.
@@ -172,6 +191,7 @@ export const register: Register = (on, options) => {
       if (next.event === 'turn.complete' || buffer.length >= flushEvery) {
         const pending = buffer.splice(0, buffer.length).join('')
         flushing = flushing.then(async () => {
+          logPath ||= await defaultLogPath($)
           try {
             let prior = ''
             if (await $.fs.exists(logPath)) {

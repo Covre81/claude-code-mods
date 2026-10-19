@@ -6,7 +6,8 @@ import { redact } from './register'
 type World = { files: Record<string, string>; logged: string[] }
 
 function fakeEngine(on: On, w: World, toolResult: object = { result: { ok: true } }) {
-  on('fs.exists', (_$, e) => ({ value: (e as unknown as { path: string }).path in w.files }) as never)
+  on('env.get', (_$, e) => ({ value: (e as unknown as { name: string }).name === 'USERPROFILE' ? 'C:\\Users\\u' : '' }) as never)
+  on('fs.exists',(_$, e) => ({ value: (e as unknown as { path: string }).path in w.files }) as never)
   on('fs.read', (_$, e) => ({ value: w.files[(e as unknown as { path: string }).path] ?? '' }) as never)
   on('fs.write', (_$, e) => {
     const { path, text } = e as unknown as { path: string; text: string }
@@ -40,6 +41,16 @@ describe('universal-audit-log', () => {
     expect(lines.length > 0).toBe(true)
     const recorded = lines.map((l) => JSON.parse(l) as { event: string })
     expect(recorded.some((r) => r.event === 'tool.call')).toBe(true)
+  })
+
+  test('the default log lives under the Claude config dir, not the working directory', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    fakeEngine(on, w)
+
+    await $.tool.call({ tool: 'Read', path: 'foo.ts' } as never)
+    await $.turn.complete(answered)
+
+    expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
   })
 
   test('secrets in a tool.call command or a tool.check input never reach the file', async ($, on) => {
