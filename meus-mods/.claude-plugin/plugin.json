@@ -1,7 +1,7 @@
 {
   "name": "meus-mods",
   "version": "0.1.0",
-  "description": "Painel central dos mods: faixa acima do prompt com atalhos e o comando /mods com o estado de cada mod.",
+  "description": "Central mods hub: quick-access bar above the prompt and /mods command displaying mod status.",
   "dependencies": [
     "clean-view",
     "cache-frio",
