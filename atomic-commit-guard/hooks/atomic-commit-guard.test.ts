@@ -76,6 +76,25 @@ describe('atomic-commit-guard hook', () => {
     expect(res.deny?.includes('guarda')).toBe(true)
   })
 
+  test('commit raiz (repo sem HEAD) cruza diretórios e executa', async ($, on) => {
+    let ran = false
+    on('process.run', (_$, e) => {
+      const argv = (e as { argv?: string[] }).argv ?? []
+      const noHead = argv.includes('rev-parse')
+      return { value: { exitCode: noHead ? 1 : 0, stdout: noHead ? '' : 'guarda/a.ts\ncofre/b.ts\n', stderr: '' } } as never
+    })
+    on('session.cwd', () => ({ value: 'C:/Dev/app' }) as never)
+    on('fs.stat', () => ({ value: { kind: 'dir' } }) as never)
+    on('tool.call', () => {
+      ran = true
+      return { result: 'ran' } as never
+    })
+    const command = 'git commit -m "feat: initial import" -m "Co-Authored-By: Claude <noreply@anthropic.com>"'
+    const res = (await $.tool.call({ tool: 'Bash', command } as never)) as { deny?: string }
+    expect(res.deny).toBeUndefined()
+    expect(ran).toBe(true)
+  })
+
   test('mensagem fora do padrão devolve deny e não executa', async ($, on) => {
     const ran = commitWorld(on, 'guarda/hooks/register.tsx\n')
     const command = 'git commit -m "arruma bug rápido"'

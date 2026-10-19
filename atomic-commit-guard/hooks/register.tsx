@@ -123,6 +123,9 @@ export function scopeDirs(files: string[]): string[] {
 }
 
 async function stagedDirs($: EngineInterface, target: CommitTarget, cwd: string): Promise<string[]> {
+  // a root commit (an import) spans every directory by nature
+  const head = await git($, cwd, ['rev-parse', '--verify', '-q', 'HEAD'])
+  if (head.exitCode !== 0) return []
   const staged = await git($, cwd, ['diff', '--cached', '--name-only'])
   if (staged.exitCode !== 0) return []
   const files = staged.stdout.split('\n')
