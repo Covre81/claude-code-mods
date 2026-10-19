@@ -2,5 +2,8 @@
   "name": "atomic-commit-guard",
   "version": "0.1.0",
   "description": "Blocks git commits that mix top-level directories, break Conventional Commits, or lack Co-Authored-By, explaining the fix in plain PT-BR",
+  "author": {
+    "name": "Bruno Covre"
+  },
   "types": "./types/index.d.ts"
 }

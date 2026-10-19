@@ -2,6 +2,9 @@
   "name": "next-prompts",
   "version": "0.1.0",
   "description": "Band above the prompt with 3 next-step suggestions from a free Ollama cloud model; press one to draft it",
+  "author": {
+    "name": "Bruno Covre"
+  },
   "types": "./types/index.d.ts",
   "userConfig": {
     "model": {

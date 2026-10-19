@@ -1,5 +1,8 @@
 {
   "name": "cofre",
   "version": "0.1.0",
-  "description": "Keeps API keys out of the conversation: /chave writes them to .env, reads of secret files show only names, outputs are masked, pasted keys are held"
+  "description": "Keeps API keys out of the conversation: /chave writes them to .env, reads of secret files show only names, outputs are masked, pasted keys are held",
+  "author": {
+    "name": "Bruno Covre"
+  }
 }

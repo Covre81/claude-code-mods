@@ -2,6 +2,9 @@
   "name": "meus-mods",
   "version": "0.1.0",
   "description": "Central mods hub: quick-access bar above the prompt and /mods command displaying mod status.",
+  "author": {
+    "name": "Bruno Covre"
+  },
   "dependencies": [
     "clean-view",
     "cache-frio",

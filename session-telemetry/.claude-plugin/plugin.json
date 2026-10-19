@@ -2,5 +2,8 @@
   "name": "session-telemetry",
   "version": "0.1.0",
   "description": "Displays timestamp on each response and notices on screen when the responding model switches (including jev-router)",
+  "author": {
+    "name": "Bruno Covre"
+  },
   "types": "./types/index.d.ts"
 }

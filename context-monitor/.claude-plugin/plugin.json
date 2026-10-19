@@ -2,5 +2,8 @@
   "name": "context-monitor",
   "version": "0.1.0",
   "description": "painel + uso-vivo + memoria in one mod: context weather and usage box above the prompt, replay and activity panes, plain-language reason before edits, and ai-memory notes before each prompt",
+  "author": {
+    "name": "Bruno Covre"
+  },
   "types": "./types/index.d.ts"
 }

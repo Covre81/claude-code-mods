@@ -2,5 +2,8 @@
   "name": "guarda",
   "version": "0.1.0",
   "description": "Holds risky Bash commands (rm -rf, git reset --hard, force push, new dependencies) and asks first, explaining the impact in plain PT-BR",
+  "author": {
+    "name": "Bruno Covre"
+  },
   "types": "./types/index.d.ts"
 }
