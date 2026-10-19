@@ -77,6 +77,18 @@ describe('universal-audit-log', () => {
     await $.turn.complete(answered)
 
     expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
+    // falling back to the home past a configured dir is said, not silent
+    expect(w.logged.filter((l) => l.includes('CLAUDE_CONFIG_DIR withheld'))).toHaveLength(1)
+  })
+
+  test('an unset CLAUDE_CONFIG_DIR is not a warning', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    fakeEngine(on, w)
+
+    await $.tool.call({ tool: 'Read', path: 'foo.ts' } as never)
+    await $.turn.complete(answered)
+
+    expect(w.logged).toEqual([])
   })
 
   test('with no home to resolve, nothing lands in the working directory: it warns and retries next turn', async ($, on) => {
@@ -88,6 +100,11 @@ describe('universal-audit-log', () => {
     await $.turn.complete(answered)
     expect(Object.keys(w.files)).toEqual([])
     expect(w.logged.some((l) => l.includes('keeping the lines'))).toBe(true)
+
+    // a second miss does not repeat the warning
+    await $.tool.call({ tool: 'Read', path: 'a2.ts' } as never)
+    await $.turn.complete(answered)
+    expect(w.logged.filter((l) => l.includes('keeping the lines'))).toHaveLength(1)
 
     env.USERPROFILE = 'C:\\Users\\u'
     await $.tool.call({ tool: 'Read', path: 'b.ts' } as never)

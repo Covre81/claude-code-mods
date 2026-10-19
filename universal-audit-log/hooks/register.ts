@@ -104,7 +104,12 @@ function denialOf(result: unknown): string | undefined {
 async function defaultLogPath($: EngineInterface): Promise<string> {
   // $.env.get takes literal names only; a withheld variable reads as unset, so the next is still tried.
   const unset = () => undefined
-  const explicit = await $.env.get('CLAUDE_CONFIG_DIR').catch(unset)
+  // An unset variable resolves to undefined; only a denial throws. A denied
+  // CLAUDE_CONFIG_DIR would silently move the log to the home, so it says so.
+  const explicit = await $.env.get('CLAUDE_CONFIG_DIR').catch((err: unknown) => {
+    $.ui.log(`[universal-audit-log] CLAUDE_CONFIG_DIR withheld, falling back to the home: ${err instanceof Error ? err.message : String(err)}`)
+    return undefined
+  })
   // The engine does not hand HOME to mods on Windows, hence USERPROFILE.
   const home = (await $.env.get('HOME').catch(unset)) || (await $.env.get('USERPROFILE').catch(unset))
   const dir = explicit || (home ? `${home}/.claude` : '')
@@ -126,6 +131,7 @@ export const register: Register = (on, options) => {
   const buffer: string[] = []
   // flushes are read-modify-write: run them one after another, never two at once
   let flushing: Promise<void> = Promise.resolve()
+  let warned = false
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
@@ -193,7 +199,10 @@ export const register: Register = (on, options) => {
           if (!logPath) {
             // ponytail: held lines grow without bound while no home resolves; cap at maxBytes if that ever happens for real
             buffer.unshift(pending)
-            $.ui.log('[universal-audit-log] no CLAUDE_CONFIG_DIR, HOME or USERPROFILE to put the log under; keeping the lines for the next flush')
+            if (!warned) {
+              $.ui.log('[universal-audit-log] no CLAUDE_CONFIG_DIR, HOME or USERPROFILE to put the log under; keeping the lines for the next flush')
+              warned = true
+            }
             return
           }
           try {
