@@ -211,7 +211,8 @@ export const register: Register = (on, options) => {
           // Kept only once resolved: a miss is retried on the next flush.
           logPath ||= await defaultLogPath($, warned)
           if (!logPath) {
-            // ponytail: held lines grow without bound while no home resolves; cap at maxBytes if that ever happens for real
+            // ponytail: held lines grow without bound while no home resolves; cap at maxBytes if that ever happens for real.
+            // Accepted: a session that ends before a home resolves loses them, rather than scatter a log into the cwd.
             buffer.unshift(pending)
             warnOnce($, warned, 'no-home', 'no CLAUDE_CONFIG_DIR, HOME or USERPROFILE to put the log under; keeping the lines for the next flush')
             return
