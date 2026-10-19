@@ -30,6 +30,8 @@ const agentFlowRef = { plugin: 'agent-flow', key: 'isEnabled' } as const
 const sessionTimeMachineRef = { plugin: 'session-time-machine', key: 'isEnabled' } as const
 const phaseTrackerRef = { plugin: 'phase-tracker', key: 'isEnabled' } as const
 const sessionTelemetryRef = { plugin: 'session-telemetry', key: 'isEnabled' } as const
+const agentRadarRef = { plugin: 'agent-radar', key: 'isEnabled' } as const
+const atomicCommitGuardRef = { plugin: 'atomic-commit-guard', key: 'isEnabled' } as const
 
 type Row = {
   command: string | null
@@ -56,6 +58,8 @@ async function rows($: EngineInterface): Promise<Row[]> {
   const { value: sessionTimeMachine = true } = await $.state.get(sessionTimeMachineRef)
   const { value: phaseTracker = true } = await $.state.get(phaseTrackerRef)
   const { value: sessionTelemetry = true } = await $.state.get(sessionTelemetryRef)
+  const { value: agentRadar = true } = await $.state.get(agentRadarRef)
+  const { value: atomicCommitGuard = true } = await $.state.get(atomicCommitGuardRef)
 
   return [
     { command: 'clean-view', icon: '🧹', accent: '#5fd98a', name: 'clean-view', description: 'Resume cada chamada de ferramenta numa linha', isEnabled: cleanView },
@@ -73,6 +77,9 @@ async function rows($: EngineInterface): Promise<Row[]> {
     { command: 'timemachine', icon: '⏱', accent: '#58a6ff', name: 'session-time-machine', description: 'Linha do tempo da sessão; bifurca a partir de qualquer ponto', isEnabled: sessionTimeMachine },
     { command: 'fase', icon: '🎯', accent: '#4aa3df', name: 'phase-tracker', description: 'Fases da tarefa guiadas pelo método Karpathy', isEnabled: phaseTracker },
     { command: 'telemetria', icon: '🕒', accent: '#f08a5d', name: 'session-telemetry', description: 'Hora nas respostas e aviso de troca de modelo', isEnabled: sessionTelemetry },
+    // radar-toggle ignora o argumento e inverte o estado; o painel sempre manda o oposto do atual, então dá no mesmo
+    { command: 'radar-toggle', icon: '📡', accent: '#e06c75', name: 'agent-radar', description: 'Faixa com o que cada subagente está fazendo', isEnabled: agentRadar },
+    { command: 'commit-guard', icon: '⚛', accent: '#d19a66', name: 'atomic-commit-guard', description: 'Barra commit que mistura escopos ou tem mensagem ruim', isEnabled: atomicCommitGuard },
     { command: null, icon: '🛡', accent: '#e0c84a', name: 'guarda', description: 'Segura comando destrutivo e pede confirmação', isEnabled: null },
     { command: null, icon: '🔐', accent: '#5fd98a', name: 'cofre', description: 'Mantém chave de API fora da conversa', isEnabled: null },
     { command: null, icon: '🗑', accent: '#8a8f99', name: 'lixeira', description: 'Manda rm para a Lixeira do Windows', isEnabled: null },
