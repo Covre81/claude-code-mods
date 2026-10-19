@@ -59,7 +59,7 @@ describe('universal-audit-log', () => {
     expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
   })
 
-  test('CLAUDE_CONFIG_DIR wins over the home, and its trailing slash is dropped', async ($, on) => {
+  test('CLAUDE_CONFIG_DIR wins over the home, even with a trailing slash', async ($, on) => {
     const w: World = { files: {}, logged: [] }
     fakeEngine(on, w, undefined, { CLAUDE_CONFIG_DIR: 'D:\\cfg\\', USERPROFILE: 'C:\\Users\\u' })
 
@@ -79,6 +79,34 @@ describe('universal-audit-log', () => {
     expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
     // falling back to the home past a configured dir is said, not silent
     expect(w.logged.filter((l) => l.includes('CLAUDE_CONFIG_DIR withheld'))).toHaveLength(1)
+  })
+
+  test('a denied CLAUDE_CONFIG_DIR with no home is said once, not every turn', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    fakeEngine(on, w, undefined, { CLAUDE_CONFIG_DIR: null, USERPROFILE: null })
+
+    for (const path of ['a.ts', 'b.ts']) {
+      await $.tool.call({ tool: 'Read', path } as never)
+      await $.turn.complete(answered)
+    }
+
+    expect(w.logged.filter((l) => l.includes('CLAUDE_CONFIG_DIR withheld'))).toHaveLength(1)
+  })
+
+  test('a relative CLAUDE_CONFIG_DIR is not cached: nothing lands in the working directory', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    const env: Env = { CLAUDE_CONFIG_DIR: 'cfg', USERPROFILE: null }
+    fakeEngine(on, w, undefined, env)
+
+    await $.tool.call({ tool: 'Read', path: 'a.ts' } as never)
+    await $.turn.complete(answered)
+    expect(Object.keys(w.files)).toEqual([])
+    expect(w.logged.some((l) => l.includes('not absolute'))).toBe(true)
+
+    env.CLAUDE_CONFIG_DIR = 'D:\\cfg'
+    await $.tool.call({ tool: 'Read', path: 'b.ts' } as never)
+    await $.turn.complete(answered)
+    expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['D:/cfg/logs/mods-audit.jsonl'])
   })
 
   test('an unset CLAUDE_CONFIG_DIR is not a warning', async ($, on) => {

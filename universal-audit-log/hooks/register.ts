@@ -96,23 +96,36 @@ function denialOf(result: unknown): string | undefined {
   return undefined
 }
 
+/** Says a warning once per key: a path still unresolved is retried, and re-warned, on every flush. */
+function warnOnce($: EngineInterface, warned: Set<string>, key: string, text: string): void {
+  if (warned.has(key)) return
+  warned.add(key)
+  $.ui.log(`[universal-audit-log] ${text}`)
+}
+
+/** A drive (C:/), root (/) or UNC (//host) path; anything else resolves against the working directory. */
+const absolute = (p: string) => /^([A-Za-z]:)?\//.test(p.replace(/\\/g, '/'))
+
 /**
  * The default log, absolute under the Claude config dir, or '' when no home can
  * be found. Never a path relative to the working directory: that scattered one
  * log per folder a session was opened in.
  */
-async function defaultLogPath($: EngineInterface): Promise<string> {
+async function defaultLogPath($: EngineInterface, warned: Set<string>): Promise<string> {
   // $.env.get takes literal names only; a withheld variable reads as unset, so the next is still tried.
   const unset = () => undefined
   // An unset variable resolves to undefined; only a denial throws. A denied
   // CLAUDE_CONFIG_DIR would silently move the log to the home, so it says so.
-  const explicit = await $.env.get('CLAUDE_CONFIG_DIR').catch((err: unknown) => {
-    $.ui.log(`[universal-audit-log] CLAUDE_CONFIG_DIR withheld, falling back to the home: ${err instanceof Error ? err.message : String(err)}`)
+  const configured = await $.env.get('CLAUDE_CONFIG_DIR').catch((err: unknown) => {
+    warnOnce($, warned, 'withheld', `CLAUDE_CONFIG_DIR withheld, falling back to the home: ${err instanceof Error ? err.message : String(err)}`)
     return undefined
   })
+  // A relative dir would put the log under whatever folder the session was opened in.
+  if (configured && !absolute(configured)) warnOnce($, warned, 'relative', `CLAUDE_CONFIG_DIR "${configured}" is not absolute, falling back to the home`)
+  const explicit = configured && absolute(configured) ? configured : undefined
   // The engine does not hand HOME to mods on Windows, hence USERPROFILE.
   const home = (await $.env.get('HOME').catch(unset)) || (await $.env.get('USERPROFILE').catch(unset))
-  const dir = explicit || (home ? `${home}/.claude` : '')
+  const dir = explicit || (home && absolute(home) ? `${home}/.claude` : '')
   return dir ? `${dir.replace(/\\/g, '/')}/logs/mods-audit.jsonl` : ''
 }
 
@@ -131,7 +144,8 @@ export const register: Register = (on, options) => {
   const buffer: string[] = []
   // flushes are read-modify-write: run them one after another, never two at once
   let flushing: Promise<void> = Promise.resolve()
-  let warned = false
+  // every flush retries the path while it is unresolved: each warning is said once, not every turn
+  const warned = new Set<string>()
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
@@ -195,14 +209,11 @@ export const register: Register = (on, options) => {
         const pending = buffer.splice(0, buffer.length).join('')
         flushing = flushing.then(async () => {
           // Kept only once resolved: a miss is retried on the next flush.
-          logPath ||= await defaultLogPath($)
+          logPath ||= await defaultLogPath($, warned)
           if (!logPath) {
             // ponytail: held lines grow without bound while no home resolves; cap at maxBytes if that ever happens for real
             buffer.unshift(pending)
-            if (!warned) {
-              $.ui.log('[universal-audit-log] no CLAUDE_CONFIG_DIR, HOME or USERPROFILE to put the log under; keeping the lines for the next flush')
-              warned = true
-            }
+            warnOnce($, warned, 'no-home', 'no CLAUDE_CONFIG_DIR, HOME or USERPROFILE to put the log under; keeping the lines for the next flush')
             return
           }
           try {
