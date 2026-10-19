@@ -77,7 +77,14 @@ describe('commitCandidate', () => {
   })
 })
 
-function gitAddWorld(on: On, stdout: string | ((cmd: string[]) => string), cwd: object = { value: 'C:/Dev/app' }) {
+/** The Guarda's question, answered as the engine's AskUserQuestion dialog would; `null` dismisses it. */
+function answerAsk(e: unknown, answer: string | null) {
+  if (answer === null) throw new Error('dismissed')
+  const q = (e as { questions: { question: string }[] }).questions[0]!.question
+  return { result: { answers: { [q]: answer } } } as never
+}
+
+function gitAddWorld(on: On, stdout: string | ((cmd: string[]) => string), cwd: object = { value: 'C:/Dev/app' }, answer: string | null = 'Cancelar') {
   let ran = false
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('ui.close', () => ({ value: undefined }) as never)
@@ -85,7 +92,8 @@ function gitAddWorld(on: On, stdout: string | ((cmd: string[]) => string), cwd: 
   on('session.cwd', () => cwd as never)
   on('fs.stat', () => ({ value: { kind: 'dir' } }) as never)
   on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
-  on('tool.call', () => {
+  on('tool.call', (_$, e) => {
+    if ((e as { tool: string }).tool === 'AskUserQuestion') return answerAsk(e, answer)
     ran = true
     return { result: 'ran' } as never
   })
@@ -93,28 +101,45 @@ function gitAddWorld(on: On, stdout: string | ((cmd: string[]) => string), cwd: 
 }
 
 test('terminal: git add of a .env is held as secret-commit', async ($, on) => {
-  const clock = mock.clock(on)
   const ran = gitAddWorld(on, "add '.env'\nadd 'src/a.ts'\n")
-  const call = $.tool.call({ tool: 'Bash', command: 'git add -A' } as never)
-  await clock.settle()
-  const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
-  expect(JSON.stringify(await pane.findAll({ type: 'Text' })).includes('.env')).toBe(true)
-  await pane.press({ key: 'cancel' })
-  await clock.advance(300)
-  const res = (await call) as { deny?: string; text?: string }
+  const res = (await $.tool.call({ tool: 'Bash', command: 'git add -A' } as never)) as { deny?: string; text?: string }
   expect(ran()).toBe(false)
   expect(String(res.deny ?? res.text).includes('arquivo de segredo')).toBe(true)
 })
 
+test('terminal: the pane shows the report but holds no buttons, the dialog decides', async ($, on) => {
+  let texts = ''
+  let buttons = -1
+  // Read while the question is open, as the person would see it; the pane empties once it is answered.
+  // Registered first so it wins over the world's fake.
+  on('tool.call', { tool: 'AskUserQuestion' }, async (_$, e) => {
+    const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
+    texts = JSON.stringify(await pane.findAll({ type: 'Text' }))
+    buttons = (await pane.findAll({ type: 'Button' })).length
+    return answerAsk(e, 'Cancelar')
+  })
+  gitAddWorld(on, "add '.env'\n")
+  await $.tool.call({ tool: 'Bash', command: 'git add .env' } as never)
+  expect(texts.includes('.env')).toBe(true)
+  expect(buttons).toBe(0)
+})
+
+test('terminal: Executar lets the held command run', async ($, on) => {
+  const ran = gitAddWorld(on, ' M a.ts\n', undefined, 'Executar')
+  await $.tool.call({ tool: 'Bash', command: 'git reset --hard' } as never)
+  expect(ran()).toBe(true)
+})
+
+test('terminal: a dismissed question denies (fail closed)', async ($, on) => {
+  const ran = gitAddWorld(on, ' M a.ts\n', undefined, null)
+  const res = (await $.tool.call({ tool: 'Bash', command: 'git reset --hard' } as never)) as { deny?: string; text?: string }
+  expect(ran()).toBe(false)
+  expect(String(res.deny ?? res.text).includes('não conseguiu perguntar')).toBe(true)
+})
+
 test('terminal: a secret in a later git add of the line is still held', async ($, on) => {
-  const clock = mock.clock(on)
   const ran = gitAddWorld(on, cmd => (cmd.includes('.env') ? "add '.env'\n" : "add 'src/a.ts'\n"))
-  const call = $.tool.call({ tool: 'Bash', command: 'git add src/ && git add .env && git commit -m x' } as never)
-  await clock.settle()
-  const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
-  await pane.press({ key: 'cancel' })
-  await clock.advance(300)
-  const res = (await call) as { deny?: string; text?: string }
+  const res = (await $.tool.call({ tool: 'Bash', command: 'git add src/ && git add .env && git commit -m x' } as never)) as { deny?: string; text?: string }
   expect(ran()).toBe(false)
   expect(String(res.deny ?? res.text).includes('arquivo de segredo')).toBe(true)
 })
@@ -126,26 +151,9 @@ test('terminal: git add without secrets passes untouched', async ($, on) => {
 })
 
 test('terminal: a risky PowerShell command waits for Cancelar and is denied', async ($, on) => {
-  const clock = mock.clock(on)
-  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
-  on('ui.close', () => ({ value: undefined }) as never)
-  on('process.run', () => ({ value: { exitCode: 0, stdout: ' M a.ts\n M b.ts\n', stderr: '' } }) as never)
-  on('session.cwd', () => ({ value: 'C:/Dev/app' }) as never)
-  on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
-  let ran = false
-  on('tool.call', () => {
-    ran = true
-    return { result: 'ran' } as never
-  })
-
-  const call = $.tool.call({ tool: 'PowerShell', command: 'git reset --hard' } as never)
-  await clock.settle()
-  const pane = await $.ui.mount({ plugin: 'guarda', surface: 'terminal', component: 'Pane', requestId: 'guarda', props: {} as never })
-  expect((await pane.findAll({ type: 'Button' })).length).toBe(2)
-  await pane.press({ key: 'cancel' })
-  await clock.advance(300)
-  const res = (await call) as { isError?: boolean; text?: string; deny?: string }
-  expect(ran).toBe(false)
+  const ran = gitAddWorld(on, ' M a.ts\n M b.ts\n')
+  const res = (await $.tool.call({ tool: 'PowerShell', command: 'git reset --hard' } as never)) as { isError?: boolean; text?: string; deny?: string }
+  expect(ran()).toBe(false)
   expect(String(res.deny ?? res.text).includes('Não tente de novo')).toBe(true)
 })
 

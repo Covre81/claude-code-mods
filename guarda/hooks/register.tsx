@@ -8,7 +8,6 @@ import type { Report } from '../types'
 
 const PANE = 'guarda'
 const LIST_MAX = 8
-const HOLD_MS = 10 * 60 * 1000
 const NET_MS = 2500
 
 const held = atom({ plugin: 'guarda', key: 'held' } as const, null)
@@ -334,8 +333,7 @@ async function measure($: EngineInterface, risk: Risk, cwd: string): Promise<Mea
 
 // ---- Holding the call -----------------------------------------------------
 
-// The decision the buttons write; one hold at a time, Bash calls in a turn run in order.
-let decision: 'proceed' | 'cancel' | null = null
+// One hold at a time, Bash calls in a turn run in order.
 let isHolding = false
 
 type Verdict = { isOk: boolean; why: string; summary: string }
@@ -347,7 +345,6 @@ async function hold($: EngineInterface, command: string, risk: Risk, signal: Abo
     await $.clock.sleep(250, { signal }).catch(() => undefined)
   }
   isHolding = true
-  decision = null
   let summary = risk.label
   let isPlaced = false
   try {
@@ -357,22 +354,18 @@ async function hold($: EngineInterface, command: string, risk: Risk, signal: Abo
     const report: Report = { command, label: risk.label, explain: EXPLAIN[risk.kind], ...measured }
     summary = report.summary
     await update($, held, () => report)
-    isPlaced = (await $.ui.open({ id: PANE, title: 'Guarda', focus: true, rows: Math.min(24, 11 + report.lines.length) })).isPlaced
-    if (!isPlaced) {
-      // Narrow terminal: no room for the pane, so the engine's own dialog. Typed "Other" text or a dismissal is a no.
-      const answer = await $.ui.ask(`⚠ ${risk.label}: ${report.explain} Vai ${report.summary}. Executar mesmo assim?`, {
-        header: 'Guarda',
-        options: ['Cancelar', 'Executar'],
-      })
-      decision = answer === 'Executar' ? 'proceed' : 'cancel'
-    }
-    const startedAt = await $.clock.now()
-    while (decision === null) {
-      if (signal.aborted) return stop('o turno foi interrompido', summary)
-      if ((await $.clock.now()) - startedAt > HOLD_MS) return stop('ninguém respondeu em 10 minutos', summary)
-      await $.clock.sleep(250, { signal }).catch(() => undefined)
-    }
-    return decision === 'proceed' ? { isOk: true, why: '', summary } : stop('o usuário escolheu Cancelar', summary)
+    // The pane only shows the details; it does not take focus, the dialog below does.
+    isPlaced = (await $.ui.open({ id: PANE, title: 'Guarda', rows: Math.min(24, 9 + report.lines.length) })).isPlaced
+    // The answer comes from the engine's dialog, not from polling: the hook budget
+    // (10 s) stops while a `$` call is in flight but runs through `$.clock.sleep`,
+    // so a polled wait was cut at 10 s and the command ran unanswered (fail open).
+    // Typed "Other" text or a dismissal is a no.
+    const answer = await $.ui.ask(`⚠ ${risk.label}: ${report.explain} Vai ${report.summary}. Executar mesmo assim?`, {
+      header: 'Guarda',
+      options: ['Cancelar', 'Executar'],
+    })
+    if (signal.aborted) return stop('o turno foi interrompido', summary)
+    return answer === 'Executar' ? { isOk: true, why: '', summary } : stop('o usuário escolheu Cancelar', summary)
   } catch {
     // Includes `-p` runs, where nobody can be asked: a risky command never runs unseen.
     return stop('o guarda não conseguiu perguntar ao usuário', summary)
@@ -414,18 +407,16 @@ export const register: Register = on => {
     }
     if (risks.length) $.ui.toast('🛡 guarda: executando')
     return next(e)
-  })
-
-  on('ui.close', ($, e, next) => {
-    if (e.id === PANE && decision === null) decision = 'cancel'
-    return next(e)
-  })
+  }).catch(($, e, next) =>
+    // fail closed: a throw or an overrun before the command ran must not let it through
+    next.called ? next(e) : { deny: 'O guarda falhou ao conferir este comando e não o executou. Não tente de novo a menos que o usuário peça.' },
+  )
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId !== PANE) return next(e)
     const r = await read($, held)
     if (!r) return next(e)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
         <Text bold color="yellow">
@@ -457,10 +448,8 @@ export const register: Register = on => {
             {r.note}
           </Text>
         ) : null}
-        <Box marginTop={1} gap={2}>
-          <Button key="proceed" label="Executar" hotkey="1" onPress={() => void (decision ??= 'proceed')} />
-          <Button key="cancel" label="Cancelar" hotkey="2" variant="primary" onPress={() => void (decision ??= 'cancel')} />
-          <Text dimColor>Claude está esperando sua resposta</Text>
+        <Box marginTop={1}>
+          <Text dimColor>Responda na pergunta do Guarda: Executar ou Cancelar</Text>
         </Box>
       </Box>
     )
