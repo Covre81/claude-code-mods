@@ -100,8 +100,8 @@ async function refresh(
 ): Promise<void> {
   const rules: Suggestion[] = []
   const { context } = await $.session.usage()
-  if (context.tokens >= CONTEXT_WARN_TOKENS) {
-    rules.push({ label: `/compact (ctx ${Math.round(context.tokens / 1000)}k)`, text: '/compact' })
+  if ((context.tokens ?? 0) >= CONTEXT_WARN_TOKENS) {
+    rules.push({ label: `/compact (ctx ${Math.round((context.tokens ?? 0) / 1000)}k)`, text: '/compact' })
   }
 
   const commands = (await $.command.list()).map(c => c.name)
@@ -152,7 +152,7 @@ async function pick($: EngineInterface, indexes: number[]): Promise<void> {
   const { items, picked = [] } = await read($, band)
   const fresh = indexes.filter(i => items[i] && !picked.includes(i))
   if (fresh.length === 0) return
-  const text = fresh.map(i => items[i].text).join('\n')
+  const text = fresh.map(i => items[i]!.text).join('\n')
   await $.prompt.fill(picked.length === 0 ? { text } : { text: `\n${text}`, mode: 'append' })
   await update($, band, b => ({ ...b, picked: [...picked, ...fresh] }))
 }

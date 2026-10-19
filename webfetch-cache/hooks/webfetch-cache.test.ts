@@ -47,7 +47,7 @@ describe('webfetch-cache', () => {
     await fetch($ as never)
     expect(w.fetched).toEqual([0])
 
-    const off = await $.command.run({ command: 'webfetch-cache', args: 'off' })
+    const off = await $.command.run({ command: 'webfetch-cache', args: 'off', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
     expect((off as { text?: string }).text).toBe('webfetch-cache desativado.')
 
     await fetch($ as never)
@@ -56,7 +56,7 @@ describe('webfetch-cache', () => {
 
   test('/webfetch-cache with no argument reports the current state', async ($, on) => {
     fakeEngine(on, { fetched: [] })
-    const status = await $.command.run({ command: 'webfetch-cache', args: '' })
+    const status = await $.command.run({ command: 'webfetch-cache', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
     expect((status as { text?: string }).text).toBe('webfetch-cache esta ativado. Uso: /webfetch-cache on · /webfetch-cache off')
   })
 })

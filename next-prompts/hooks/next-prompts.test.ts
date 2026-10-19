@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { parseSuggestions } from './register'
+declare const setTimeout: (fn: (v?: unknown) => void, ms: number) => unknown
 
 const KNOWN = new Set(['compact', 'code-review'])
 
