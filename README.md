@@ -44,7 +44,7 @@ Mods de function hooks para o [Claude Code](https://claude.com/claude-code): seg
 Requer um Claude Code com suporte a mods (function hooks).
 
 ```bash
-git clone https://github.com/Covre81/claude-mods.git ~/.claude/mods
+git clone https://github.com/Covre81/claude-code-mods.git ~/.claude/mods
 ```
 
 Ligue os mods listando as pastas, com caminho absoluto, em `CLAUDE_CODE_PLUGIN_DIRS` no `env` de `~/.claude/settings.json`. No Windows o separador é `;`:
