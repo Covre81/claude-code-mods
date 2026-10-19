@@ -1,6 +1,6 @@
 {
   "name": "session-telemetry",
   "version": "0.1.0",
-  "description": "Hora em cada resposta exibida e marca na tela quando o modelo que responde muda (jev-router incluso)",
+  "description": "Displays timestamp on each response and notices on screen when the responding model switches (including jev-router)",
   "types": "./types/index.d.ts"
 }
