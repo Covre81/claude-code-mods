@@ -62,7 +62,7 @@ export const register: Register = on => {
       const id = e.agentId
       const failed = e.reason === 'error' || e.reason === 'aborted'
       const list = await update($, agents, all =>
-        all.map(a => (a.id === id ? { ...a, status: failed ? 'failed' : 'done', endedAt: Date.now(), last: failed ? `stopped: ${e.reason}` : 'finished' } : a)),
+        all.map(a => (a.id === id ? { ...a, status: failed ? ('failed' as const) : ('done' as const), endedAt: Date.now(), last: failed ? `stopped: ${e.reason}` : 'finished' } : a)),
       )
       const one = list.find(a => a.id === id)
       if (one) $.ui.toast(`${failed ? '✗' : '✓'} ${one.description} ${failed ? 'failed' : 'done'} (${elapsed(one)} · ${one.tools} tools)`)

@@ -11,6 +11,6 @@ export type RadarAgent = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'agent-radar': { agents: RadarAgent[]; selected: string | null; now: number }
+    'agent-radar': { agents: RadarAgent[]; selected: string | null; now: number; isEnabled: boolean }
   }
 }
