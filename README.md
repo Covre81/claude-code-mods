@@ -1,53 +1,53 @@
-# claude-mods
+# claude-code-mods
 
-Mods de function hooks para o [Claude Code](https://claude.com/claude-code): segurança no shell, guarda de segredos, telemetria de sessão, painéis de contexto e ferramentas de fluxo de trabalho. Cada mod é um plugin isolado, com testes próprios, e você liga só os que quiser.
+Function-hook mods for [Claude Code](https://claude.com/claude-code): shell safety, secret guarding, session telemetry, context panels, and workflow tools. Each mod is an isolated plugin with its own tests, and you enable only the ones you want.
 
 ## Mods
 
-### Segurança
+### Security
 
-| Mod | O que faz |
+| Mod | Description |
 |---|---|
-| `guarda` | Segura comandos Bash arriscados (`rm -rf`, `git reset --hard`, force push, dependência nova) e pede confirmação explicando o impacto. |
-| `lixeira` | Manda alvos de `rm` / `Remove-Item` para a Lixeira do Windows em vez de apagar de vez. |
-| `cofre` | Mantém chaves de API fora da conversa: `/chave` grava no `.env`, leitura de arquivo de segredo mostra só os nomes, saídas são mascaradas e chaves coladas ficam retidas. |
-| `atomic-commit-guard` | Bloqueia commit que mistura diretórios de topo, foge do Conventional Commits ou não tem `Co-Authored-By`. |
-| `universal-audit-log` | Um hook em `*` que registra cada evento (tool calls, prompts, turnos, fs/http/process de outros plugins) com redação de segredos. |
+| `guarda` | Intercepts risky Bash commands (`rm -rf`, `git reset --hard`, force push, new dependencies) and asks for confirmation explaining the impact. |
+| `lixeira` | Sends `rm` / `Remove-Item` targets to the Windows Recycle Bin instead of deleting them permanently. |
+| `cofre` | Keeps API keys out of the conversation: `/chave` stores them in `.env`, secret file reads display only variable names, outputs are masked, and pasted keys are quarantined. |
+| `atomic-commit-guard` | Blocks commits that mix top-level directories, violate Conventional Commits, or lack a `Co-Authored-By` trailer. |
+| `universal-audit-log` | A hook on `*` that logs every event (tool calls, prompts, turns, fs/http/process calls from other plugins) with secret redaction. |
 
-### Sessão e contexto
+### Session & Context
 
-| Mod | O que faz |
+| Mod | Description |
 |---|---|
-| `context-monitor` | Clima do contexto e uso acima do prompt, painéis de replay e atividade, motivo em linguagem simples antes de cada edição, notas do ai-memory. |
-| `cache-frio` | Pergunta antes de mandar prompt numa conversa grande cujo prompt cache já esfriou. |
-| `session-telemetry` | Hora em cada resposta, TTFT e tok/s por passo, e aviso quando o modelo que responde muda. |
-| `session-time-machine` | `/timemachine`: a sessão como linha do tempo de prompts, tool calls e fins de turno. |
-| `turn-inspector` | Painel lateral que mostra a sessão turno a turno: cada requisição ao modelo e o que ela levou. |
-| `clean-view` | Cada tool call bem-sucedida vira uma linha (`Edit arquivo +12 −3`); erros e chamadas em curso mantêm o bloco completo. |
-| `webfetch-cache` | Responde WebFetch repetido (mesma URL e prompt) a partir do cache da sessão. |
+| `context-monitor` | Context weather and token usage above the prompt, replay and activity panels, plain-language explanation before each edit, and ai-memory notes. |
+| `cache-frio` | Confirms before submitting a prompt to a large conversation whose prompt cache has gone cold. |
+| `session-telemetry` | Timestamp on each response, TTFT and tok/s per step, and visual notice whenever the responding model switches. |
+| `session-time-machine` | `/timemachine`: renders the session as a timeline of prompts, tool calls, and turn completions. |
+| `turn-inspector` | Side pane displaying the session turn-by-turn: every model request and what it carried. |
+| `clean-view` | Collapses each successful tool call into a single concise line (`Edit file +12 −3`); errors and in-flight calls retain the full block. |
+| `webfetch-cache` | Serves repeated WebFetch requests (identical URL and prompt) directly from the session cache. |
 
-### Agentes e fluxo
+### Agents & Workflow
 
-| Mod | O que faz |
+| Mod | Description |
 |---|---|
-| `agent-flow` | Desenha ao vivo o fluxo de agentes: contexto do loop principal, árvore de subagentes, o que cada um recebeu e devolveu. |
-| `agent-radar` | Uma linha por subagente rodando, acima do prompt; `/radar` abre o painel com as mensagens de cada um. |
-| `delegation-dock` | Entrada na status line com as delegações em curso (agy/codex/ollama) e aviso quando uma volta vazia. |
-| `phase-tracker` | Acompanha a fase atual (Spec → Red Test → Surgical Code → Verification). |
-| `next-prompts` | Faixa com 3 sugestões de próximo passo geradas por um modelo Ollama; aperte uma para rascunhar. |
-| `git-sidebar` | Painel estilo lazygit: worktrees e branches locais, troca de branch e abertura de worktree. |
-| `wait-quiz` | Enquanto o Claude trabalha, uma faixa mostra um cartão de estudo para revisar. |
-| `meus-mods` | Painel central: atalhos acima do prompt e `/mods` com o estado de cada mod. |
+| `agent-flow` | Live diagram of agent flow: main loop context, subagent tree, and context passed/returned by each agent. |
+| `agent-radar` | One live line per running subagent above the prompt; `/radar` opens a pane with messages from each. |
+| `delegation-dock` | Status line indicator showing in-flight delegations (agy/codex/ollama) and alerting when one returns empty. |
+| `phase-tracker` | Tracks and displays the current development phase (Spec → Red Test → Surgical Code → Verification). |
+| `next-prompts` | Band with 3 next-step suggestions generated by a free Ollama cloud model; click one to draft. |
+| `git-sidebar` | Lazygit-style side pane: worktrees, local branches, branch switching, and worktree checkout. |
+| `wait-quiz` | Quizzes a flashcard in a band above the prompt while Claude is working. |
+| `meus-mods` | Central hub: quick-access bar above the prompt and `/mods` command displaying the status of each mod. |
 
-## Instalação
+## Installation
 
-Requer um Claude Code com suporte a mods (function hooks).
+Requires Claude Code with function-hook mods support.
 
 ```bash
 git clone https://github.com/Covre81/claude-code-mods.git ~/.claude/mods
 ```
 
-Ligue os mods listando as pastas, com caminho absoluto, em `CLAUDE_CODE_PLUGIN_DIRS` no `env` de `~/.claude/settings.json`. No Windows o separador é `;`:
+Enable the mods by listing their absolute paths in `CLAUDE_CODE_PLUGIN_DIRS` inside `~/.claude/settings.json`. On Windows, paths are separated by `;`:
 
 ```json
 {
@@ -57,38 +57,38 @@ Ligue os mods listando as pastas, com caminho absoluto, em `CLAUDE_CODE_PLUGIN_D
 }
 ```
 
-A ordem importa: o último da lista fica mais perto do engine. O `lixeira`, por exemplo, deve vir depois do `guarda`, para o `guarda` ver o `rm -rf` original primeiro.
+Order matters: the last plugin in the list sits closest to the engine. For instance, `lixeira` should come after `guarda` so `guarda` inspects the original `rm -rf` first.
 
-Vários mods têm um comando para ligar e desligar sem reiniciar (`/webfetch-cache on|off`, `/radar-toggle`, `/telemetria`…); `/mods` mostra o estado de todos.
+Several mods include a command to toggle them on or off without restarting (`/webfetch-cache on|off`, `/radar-toggle`, `/telemetria`…); `/mods` displays the status of all mods.
 
-## Desenvolvimento
+## Development
 
-Cada mod segue o mesmo layout:
+Each mod follows the same structure:
 
 ```
 <mod>/
-  .claude-plugin/plugin.json   manifesto
-  .claude-plugin/types/        tipos do engine (git-ignored, ver abaixo)
-  hooks/hooks.json             quais hooks o mod registra
-  hooks/register.ts(x)         o código
-  hooks/*.test.ts(x)           testes
+  .claude-plugin/plugin.json   manifest
+  .claude-plugin/types/        engine types (git-ignored, see below)
+  hooks/hooks.json             hooks registered by the mod
+  hooks/register.ts(x)         code
+  hooks/*.test.ts(x)           tests
 ```
 
-Os tipos do engine não vão para o repositório. Para tipar e testar um mod, copie `.claude-plugin/types` de um mod que já os tenha, ou gere-os com o seu Claude Code.
+Engine types are not committed to the repository. To typecheck and test a mod, copy `.claude-plugin/types` from an existing mod or generate them with your Claude Code instance.
 
-Os testes rodam no próprio Claude Code, não em vitest/jest:
+Tests run directly within Claude Code, not via vitest/jest:
 
 ```bash
-claude plugin test guarda               # um mod
-for d in */hooks/hooks.json; do claude plugin test "${d%%/*}"; done   # todos
+claude plugin test guarda               # single mod
+for d in */hooks/hooks.json; do claude plugin test "${d%%/*}"; done   # all mods
 ```
 
-Commits seguem o [Conventional Commits](https://www.conventionalcommits.org/), um mod por commit (o `atomic-commit-guard` cobra isso).
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to one mod per commit (enforced by `atomic-commit-guard`).
 
-## Créditos
+## Credits
 
-Seis mods (`agent-flow`, `git-sidebar`, `session-time-machine`, `turn-inspector`, `universal-audit-log`, `webfetch-cache`) vêm de [davila7/claude-code-templates](https://github.com/davila7/claude-code-templates), e o `agent-radar` vem de [hamzafer/claude-code-mods](https://github.com/hamzafer/claude-code-mods), ambos sob licença MIT e adaptados aqui. Os avisos de copyright estão em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Six mods (`agent-flow`, `git-sidebar`, `session-time-machine`, `turn-inspector`, `universal-audit-log`, `webfetch-cache`) originate from [davila7/claude-code-templates](https://github.com/davila7/claude-code-templates), and `agent-radar` originates from [hamzafer/claude-code-mods](https://github.com/hamzafer/claude-code-mods), both under the MIT License and adapted here. Copyright notices are preserved in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Licença
+## License
 
 [MIT](LICENSE)
