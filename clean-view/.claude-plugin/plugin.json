@@ -1,6 +1,6 @@
 {
   "name": "clean-view",
   "version": "0.1.0",
-  "description": "Draws each successful tool call as one line (Edit arquivo +12 −3); errors and running calls keep the engine's full block",
+  "description": "Draws each successful tool call as one line (Edit file +12 −3); errors and running calls keep the engine's full block",
   "types": "./types/index.d.ts"
 }
