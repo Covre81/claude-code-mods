@@ -23,6 +23,8 @@ let bandOrder: Promise<string[]> | undefined // read once per session: a new ses
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     bandOrder = undefined // a new session reads the order file again
+    // Published so the meus-mods panel reads the state, never a copied default (the toggle is per session).
+    await update($, isEnabledRef, () => isEnabledRef.initial)
     const r = await next(e)
     await $.command.register({ name: 'radar', description: 'Show what each subagent is doing, in the Agent Radar pane' }).catch(() => {}) // a name Claude Code already has is refused: start anyway
     await $.command.register({ name: 'radar-toggle', description: 'Toggle Agent Radar on/off' }).catch(() => {})

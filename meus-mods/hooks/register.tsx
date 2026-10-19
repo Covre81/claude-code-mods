@@ -56,8 +56,8 @@ async function enabledStates($: EngineInterface): Promise<Record<string, boolean
     $.state.get(atomicCommitGuardRef),
   ])
   return {
-    // Nenhum default copiado aqui: mod que não nasce ligado publica o próprio
-    // estado no session.start (o clean-view faz isso); sem publicação, `?? true` de rows.
+    // Nenhum default copiado aqui: todo mod publica o próprio estado no
+    // session.start; sem publicação (o mod não carregou), rows mostra desligado.
     'clean-view': a.value,
     'cache-frio': b.value,
     'delegation-dock': c.value,
@@ -152,14 +152,14 @@ async function rows($: EngineInterface): Promise<Row[]> {
       // Convenção dos mods daqui: o toggle tem o nome do próprio mod.
       const hasToggle = name in states && meta?.command !== null
       const command = hasToggle ? (meta?.command ?? name) : null
-      const isEnabled = hasToggle ? (states[name] ?? true) : null
+      const isEnabled = hasToggle ? (states[name] ?? false) : null
       return { command, name, isEnabled, icon: meta?.icon ?? GENERIC.icon, accent: meta?.accent ?? GENERIC.accent, description: meta?.description ?? description }
     }),
   )
 
   const extras: Row[] = []
   if (mods.some(m => m.name === 'context-monitor')) {
-    const { value: memoria = true } = await $.state.get(memoriaRef)
+    const { value: memoria = false } = await $.state.get(memoriaRef)
     extras.push({ command: 'memoria', icon: '🧠', accent: '#9b8cf0', name: 'memoria', description: 'Busca notas do ai-memory antes de cada prompt (recurso do context-monitor)', isEnabled: memoria, isFeature: true })
   }
 

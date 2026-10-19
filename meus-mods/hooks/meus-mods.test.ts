@@ -69,8 +69,8 @@ test('mods aparecem em ordem alfabética', async ($, on) => {
 })
 
 // O estado vem do que o clean-view publica no session.start; o painel não
-// conhece o default de ninguém.
-for (const [value, expected] of [[false, '0 de 1 mods ativos'], [true, '1 de 1 mods ativos']] as const) {
+// conhece o default de ninguém: sem publicação (o mod não carregou), desligado.
+for (const [value, expected] of [[undefined, '0 de 1 mods ativos'], [false, '0 de 1 mods ativos'], [true, '1 de 1 mods ativos']] as const) {
   test(`clean-view com estado ${value} aparece como "${expected}"`, async ($, on) => {
     on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
     on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)

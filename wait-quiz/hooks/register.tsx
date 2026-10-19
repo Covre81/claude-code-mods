@@ -115,7 +115,7 @@ const label = (c: Card) => `${NAME[c.src]}${c.topic ? ` · ${c.topic}` : ''}`
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
-    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     await $.command.register({ name: 'cartao', description: 'Salva um cartão de estudo: /cartao frente | verso | tópico' })
     await $.tool.register({
       name: 'salvar_cartao',

@@ -18,7 +18,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
-    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     await $.command.register({
       name: 'webfetch-cache',
       description: 'Liga/desliga o cache de WebFetch repetido na mesma sessão.',

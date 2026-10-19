@@ -140,6 +140,8 @@ async function stagedDirs($: EngineInterface, target: CommitTarget, cwd: string)
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    // Published so the meus-mods panel reads the state, never a copied default (the toggle is per session).
+    await update($, isEnabledRef, () => isEnabledRef.initial)
     await $.command.register({
       name: 'commit-guard',
       description: 'Liga/desliga a validação de escopo único, Conventional Commits e Co-Authored-By.',

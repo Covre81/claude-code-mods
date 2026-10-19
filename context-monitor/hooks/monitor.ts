@@ -10,9 +10,9 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     // $.state is per session; /monitor and /memoria mirror their switch to the store, restored here.
     const monitor = await $.store.get('isEnabled').catch(() => undefined)
-    if (typeof monitor === 'boolean') await update($, isEnabledRef, () => monitor)
+    await update($, isEnabledRef, () => (typeof monitor === 'boolean' ? monitor : isEnabledRef.initial))
     const memoria = await $.store.get('memoriaEnabled').catch(() => undefined)
-    if (typeof memoria === 'boolean') await update($, memoriaRef, () => memoria)
+    await update($, memoriaRef, () => (typeof memoria === 'boolean' ? memoria : memoriaRef.initial))
     await $.command.register({ name: 'monitor', description: 'Liga/desliga a faixa de contexto e uso, o replay e a atividade.', argumentHint: 'on|off' })
     await $.command.register({ name: 'replay', description: 'Mostra, passo a passo, o que o último turno mudou nos arquivos' })
     await $.command.register({ name: 'atividade', description: 'Linha do tempo das ferramentas do último turno, com tokens, custo e limites' })

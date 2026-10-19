@@ -84,7 +84,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
-    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     const r = await next(e)
     ledger = createLedger()
     live = undefined

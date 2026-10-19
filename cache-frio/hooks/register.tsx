@@ -28,7 +28,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
-    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     await $.command.register({
       name: 'cache-frio',
       description: 'Liga/desliga o aviso de cache frio antes de mandar um prompt caro.',
