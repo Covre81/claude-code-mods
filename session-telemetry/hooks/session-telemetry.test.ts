@@ -20,11 +20,24 @@ describe('switchLine', () => {
   test('marca de/para com a hora', () => {
     expect(switchLine('claude-opus-5-5', 'gpt-oss:20b-cloud', T)).toBe('⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gpt-oss:20b-cloud')
   })
+  test('com o motivo do roteador', () => {
+    expect(switchLine('claude-opus-5-5', 'gemini-3.8-flash-high', T, 'gemini:text-only')).toBe('⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gemini-3.8-flash-high · motivo: gemini:text-only')
+  })
 })
 
-function stub(on: On, models: string[]) {
+type Router = { base?: string; status: number; text: string }
+
+/** `router` is what GET /route/<session> answers; without `base` there is no router. */
+function stub(on: On, models: string[], router: Router = { status: 404, text: '' }) {
   const logged: string[] = []
+  const fetched: string[] = []
   on('clock.now', () => ({ value: T }) as never)
+  on('env.get', (_$, e) => ({ value: (e as { name: string }).name === 'ANTHROPIC_BASE_URL' ? router.base : undefined }) as never)
+  on('session.id', () => ({ value: 'sess-1' }) as never)
+  on('http.fetch', (_$, e) => {
+    fetched.push((e as { url: string }).url)
+    return { value: { status: router.status, ok: router.status < 300, headers: {}, text: router.text } } as never
+  })
   // eslint-disable-next-line require-yield
   on('turn.step', async function* (_$, e) {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: { model: models.shift() } as never }
@@ -34,7 +47,7 @@ function stub(on: On, models: string[]) {
     return { value: undefined } as never
   })
   on('ui.toast', () => ({ value: undefined }) as never)
-  return logged
+  return Object.assign(logged, { fetched })
 }
 
 async function step($: Engine, agentId?: string) {
@@ -50,6 +63,28 @@ describe('turn.step', () => {
     await step($, 'sub-1')
     await step($)
     expect(logged).toEqual(['⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gpt-oss:20b-cloud'])
+  })
+  test('na troca pergunta o motivo ao roteador, só uma vez', async ($, on) => {
+    const router = { base: 'http://127.0.0.1:8787/', status: 200, text: JSON.stringify({ route: 'gemini', reason: 'gemini:text-only' }) }
+    const logged = stub(on, ['claude-opus-5-5', 'claude-opus-5-5', 'gemini-3.8-flash-high'], router)
+    await step($)
+    await step($)
+    await step($)
+    expect(logged.fetched).toEqual(['http://127.0.0.1:8787/route/sess-1'])
+    expect([...logged]).toEqual(['⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gemini-3.8-flash-high · motivo: gemini:text-only'])
+  })
+  test('roteador sem decisão (404) ou ausente: linha sem motivo', async ($, on) => {
+    const logged = stub(on, ['claude-opus-5-5', 'gemini-3.8-flash-high', 'claude-opus-5-5'], { base: 'http://127.0.0.1:8787', status: 404, text: '{"error":"x"}' })
+    await step($)
+    await step($)
+    expect([...logged]).toEqual(['⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gemini-3.8-flash-high'])
+  })
+  test('sem ANTHROPIC_BASE_URL não chama a rede', async ($, on) => {
+    const logged = stub(on, ['claude-opus-5-5', 'gemini-3.8-flash-high'])
+    await step($)
+    await step($)
+    expect(logged.fetched).toEqual([])
+    expect([...logged]).toEqual(['⇄ 14:05:09 modelo trocado: claude-opus-5-5 → gemini-3.8-flash-high'])
   })
 })
 

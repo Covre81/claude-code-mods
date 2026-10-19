@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 const isEnabledRef = atom({ plugin: 'session-telemetry', key: 'isEnabled' } as const, true)
 
@@ -13,9 +13,25 @@ export function stamp(ms: number): string {
   }
 }
 
-export function switchLine(prev: string | undefined, curr: string, ms: number): string | null {
+export function switchLine(prev: string | undefined, curr: string, ms: number, reason?: string): string | null {
   if (!prev || prev === curr) return null
-  return `⇄ ${stamp(ms)} modelo trocado: ${prev} → ${curr}`
+  return `⇄ ${stamp(ms)} modelo trocado: ${prev} → ${curr}` + (reason ? ` · motivo: ${reason}` : '')
+}
+
+// Why the jev-router sent the turn where it did (GET /route/<session>). Only behind
+// a router: with no ANTHROPIC_BASE_URL the request goes to Anthropic, and a /model
+// switch has no reason to fetch. Any failure leaves the line without a reason.
+async function routeReason($: EngineInterface): Promise<string | undefined> {
+  const base = await $.env.get('ANTHROPIC_BASE_URL')
+  if (!base) return undefined
+  try {
+    const res = await $.http.fetch(`${base.replace(/\/+$/, '')}/route/${encodeURIComponent(await $.session.id())}`)
+    if (!res.ok) return undefined
+    const reason = (JSON.parse(res.text) as { reason?: unknown }).reason
+    return typeof reason === 'string' ? reason : undefined
+  } catch {
+    return undefined
+  }
 }
 
 // O modelo que de fato respondeu vem no usage de cada requisição: é ali que
@@ -76,7 +92,8 @@ export const register: Register = on => {
 
     const model = res.usage?.model
     if (!model) return res
-    const line = switchLine(lastModel, model, await $.clock.now())
+    const switched = lastModel !== undefined && lastModel !== model
+    const line = switchLine(lastModel, model, await $.clock.now(), switched ? await routeReason($) : undefined)
     lastModel = model
     if (line) {
       $.ui.log(line)
