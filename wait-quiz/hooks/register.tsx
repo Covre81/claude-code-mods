@@ -4,13 +4,10 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Card } from '../types'
 import { LINUX } from './linux'
 
-// Read-only on disk by construction: this module only ever calls $.fs.read (Italian_Language lost data on 2026-08-09).
+// Optional external deck file paths, configurable via environment variables:
+// WAIT_QUIZ_ANKI_PATH (e.g. an anki JSON export)
+// WAIT_QUIZ_DECK_PATH (e.g. a markdown flashcard deck)
 // Captured cards live in the plugin's own $.store, never in the source decks.
-const SOURCES = {
-  it: 'C:/Dev/Italian_Language/anki_export.json',
-  dev: 'C:/Dev/RoadToBSCoDev/flashcards/deck.md',
-} as const
-
 const MAX = 280
 const CAP_KEY = 'captured'
 const CAP_MAX = 500
@@ -49,8 +46,13 @@ let decks: Card[][] | undefined
 
 async function loadDecks($: EngineInterface): Promise<Card[][]> {
   if (decks) return decks
-  const readOr = (path: string) => $.fs.read(path).catch(() => '')
-  const [it, dev] = await Promise.all([readOr(SOURCES.it), readOr(SOURCES.dev)])
+  const readOr = async (path: string | undefined) => {
+    if (!path) return ''
+    return $.fs.read(path).catch(() => '')
+  }
+  const ankiPath = await $.env.get('WAIT_QUIZ_ANKI_PATH').catch(() => undefined)
+  const deckPath = await $.env.get('WAIT_QUIZ_DECK_PATH').catch(() => undefined)
+  const [it, dev] = await Promise.all([readOr(ankiPath), readOr(deckPath)])
   const safe = (f: () => Card[]) => {
     try {
       return f()
