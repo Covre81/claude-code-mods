@@ -1,6 +1,6 @@
 {
   "name": "phase-tracker",
   "version": "0.1.0",
-  "description": "Acompanha e exibe a fase atual de execucao (Spec -> Red Test -> Surgical Code -> Verification)",
+  "description": "Tracks and displays the current execution phase (Spec -> Red Test -> Surgical Code -> Verification)",
   "types": "./types/index.d.ts"
 }
