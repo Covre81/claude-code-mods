@@ -5,9 +5,15 @@ import { redact } from './register'
 
 type World = { files: Record<string, string>; logged: string[] }
 
-function fakeEngine(on: On, w: World, toolResult: object = { result: { ok: true } }) {
-  on('env.get', (_$, e) => ({ value: (e as unknown as { name: string }).name === 'USERPROFILE' ? 'C:\\Users\\u' : '' }) as never)
-  on('fs.exists',(_$, e) => ({ value: (e as unknown as { path: string }).path in w.files }) as never)
+/** The environment the mod sees; `null` withholds that variable (the engine denies it). */
+type Env = Record<string, string | null>
+
+function fakeEngine(on: On, w: World, toolResult: object = { result: { ok: true } }, env: Env = { USERPROFILE: 'C:\\Users\\u' }) {
+  on('env.get', (_$, e) => {
+    const value = env[(e as unknown as { name: string }).name]
+    return (value === null ? { deny: 'withheld' } : { value }) as never
+  })
+  on('fs.exists', (_$, e) => ({ value: (e as unknown as { path: string }).path in w.files }) as never)
   on('fs.read', (_$, e) => ({ value: w.files[(e as unknown as { path: string }).path] ?? '' }) as never)
   on('fs.write', (_$, e) => {
     const { path, text } = e as unknown as { path: string; text: string }
@@ -51,6 +57,44 @@ describe('universal-audit-log', () => {
     await $.turn.complete(answered)
 
     expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
+  })
+
+  test('CLAUDE_CONFIG_DIR wins over the home, and its trailing slash is dropped', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    fakeEngine(on, w, undefined, { CLAUDE_CONFIG_DIR: 'D:\\cfg\\', USERPROFILE: 'C:\\Users\\u' })
+
+    await $.tool.call({ tool: 'Read', path: 'foo.ts' } as never)
+    await $.turn.complete(answered)
+
+    expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['D:/cfg/logs/mods-audit.jsonl'])
+  })
+
+  test('a withheld variable does not stop the next one from being tried', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    fakeEngine(on, w, undefined, { CLAUDE_CONFIG_DIR: null, HOME: null, USERPROFILE: 'C:\\Users\\u' })
+
+    await $.tool.call({ tool: 'Read', path: 'foo.ts' } as never)
+    await $.turn.complete(answered)
+
+    expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
+  })
+
+  test('with no home to resolve, nothing lands in the working directory: it warns and retries next turn', async ($, on) => {
+    const w: World = { files: {}, logged: [] }
+    const env: Env = { USERPROFILE: null }
+    fakeEngine(on, w, undefined, env)
+
+    await $.tool.call({ tool: 'Read', path: 'a.ts' } as never)
+    await $.turn.complete(answered)
+    expect(Object.keys(w.files)).toEqual([])
+    expect(w.logged.some((l) => l.includes('keeping the lines'))).toBe(true)
+
+    env.USERPROFILE = 'C:\\Users\\u'
+    await $.tool.call({ tool: 'Read', path: 'b.ts' } as never)
+    await $.turn.complete(answered)
+    expect(Object.keys(w.files).map((p) => p.replace(/\\/g, '/'))).toEqual(['C:/Users/u/.claude/logs/mods-audit.jsonl'])
+    // the lines held back on the first turn are written with the second
+    expect((logContent(w) ?? '').includes('a.ts')).toBe(true)
   })
 
   test('secrets in a tool.call command or a tool.check input never reach the file', async ($, on) => {

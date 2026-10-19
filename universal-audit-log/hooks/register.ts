@@ -22,7 +22,7 @@
  * against Anthropic's declarations: https://github.com/anthropics/claude-code/tree/main/mods
  *
  * Options:
- *   path:       string    JSONL file, relative to the working directory (default <CLAUDE_CONFIG_DIR or ~/.claude>/logs/mods-audit.jsonl)
+ *   path:       string    JSONL file; a relative path is taken from the working directory (default <CLAUDE_CONFIG_DIR or ~/.claude>/logs/mods-audit.jsonl)
  *   skipEvents: string    events not to record, comma-separated (default: the render / log chatter)
  *   flushEvery: number    flush after this many buffered lines (default 50)
  *   maxBytes:   number    keep the file under this many UTF-8 bytes, dropping the oldest lines (default 2 MiB, at most 3 MiB)
@@ -97,21 +97,18 @@ function denialOf(result: unknown): string | undefined {
 }
 
 /**
- * The default log, absolute under the Claude config dir: a path relative to the
- * working directory scattered one log per folder a session was opened in.
- * Falls back to that relative path only when no home can be found.
+ * The default log, absolute under the Claude config dir, or '' when no home can
+ * be found. Never a path relative to the working directory: that scattered one
+ * log per folder a session was opened in.
  */
 async function defaultLogPath($: EngineInterface): Promise<string> {
-  try {
-    const explicit = await $.env.get('CLAUDE_CONFIG_DIR')
-    // The engine does not hand HOME to mods on Windows, hence USERPROFILE.
-    const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
-    const dir = explicit || (home ? `${home}/.claude` : '')
-    if (dir) return `${dir.replace(/\\/g, '/')}/logs/mods-audit.jsonl`
-  } catch {
-    // env withheld: the relative path below
-  }
-  return '.claude/logs/mods-audit.jsonl'
+  // $.env.get takes literal names only; a withheld variable reads as unset, so the next is still tried.
+  const unset = () => undefined
+  const explicit = await $.env.get('CLAUDE_CONFIG_DIR').catch(unset)
+  // The engine does not hand HOME to mods on Windows, hence USERPROFILE.
+  const home = (await $.env.get('HOME').catch(unset)) || (await $.env.get('USERPROFILE').catch(unset))
+  const dir = explicit || (home ? `${home}/.claude` : '')
+  return dir ? `${dir.replace(/\\/g, '/')}/logs/mods-audit.jsonl` : ''
 }
 
 export const register: Register = (on, options) => {
@@ -191,7 +188,14 @@ export const register: Register = (on, options) => {
       if (next.event === 'turn.complete' || buffer.length >= flushEvery) {
         const pending = buffer.splice(0, buffer.length).join('')
         flushing = flushing.then(async () => {
+          // Kept only once resolved: a miss is retried on the next flush.
           logPath ||= await defaultLogPath($)
+          if (!logPath) {
+            // ponytail: held lines grow without bound while no home resolves; cap at maxBytes if that ever happens for real
+            buffer.unshift(pending)
+            $.ui.log('[universal-audit-log] no CLAUDE_CONFIG_DIR, HOME or USERPROFILE to put the log under; keeping the lines for the next flush')
+            return
+          }
           try {
             let prior = ''
             if (await $.fs.exists(logPath)) {

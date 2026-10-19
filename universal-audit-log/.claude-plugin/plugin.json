@@ -18,7 +18,7 @@
     "path": {
       "type": "string",
       "title": "Log file",
-      "description": "JSONL file the audit lines are written to, relative to the working directory (empty: <CLAUDE_CONFIG_DIR or ~/.claude>/logs/mods-audit.jsonl)",
+      "description": "JSONL file the audit lines are written to; a relative path is taken from the working directory (empty:<CLAUDE_CONFIG_DIR or ~/.claude>/logs/mods-audit.jsonl)",
       "default": ""
     },
     "skipEvents": {
