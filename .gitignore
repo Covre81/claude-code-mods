@@ -1,2 +1,4 @@
 .claude/
 claude-mods-backup/
+node_modules/
+scratchpad/
