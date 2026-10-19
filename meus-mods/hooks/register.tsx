@@ -56,8 +56,9 @@ async function enabledStates($: EngineInterface): Promise<Record<string, boolean
     $.state.get(atomicCommitGuardRef),
   ])
   return {
-    // Único mod que nasce desligado (atom(..., false) no clean-view); os outros caem no `?? true` de rows.
-    'clean-view': a.value ?? false,
+    // Nenhum default copiado aqui: mod que não nasce ligado publica o próprio
+    // estado no session.start (o clean-view faz isso); sem publicação, `?? true` de rows.
+    'clean-view': a.value,
     'cache-frio': b.value,
     'delegation-dock': c.value,
     'context-monitor': d.value,

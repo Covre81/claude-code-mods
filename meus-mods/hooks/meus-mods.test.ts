@@ -68,12 +68,17 @@ test('mods aparecem em ordem alfabética', async ($, on) => {
   expect(names).toEqual(['alfa', 'meio', 'zeta'])
 })
 
-test('clean-view sem estado salvo aparece desligado, como o default dele', async ($, on) => {
-  on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
-  on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)
-  register(on, {})
+// O estado vem do que o clean-view publica no session.start; o painel não
+// conhece o default de ninguém.
+for (const [value, expected] of [[false, '0 de 1 mods ativos'], [true, '1 de 1 mods ativos']] as const) {
+  test(`clean-view com estado ${value} aparece como "${expected}"`, async ($, on) => {
+    on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
+    on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)
+    on('state.get', { plugin: 'clean-view' }, () => ({ value: { value, version: 1 } }) as never)
+    register(on, {})
 
-  const mounted = await $.ui.mount({ plugin: 'meus-mods', surface: 'terminal', component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
+    const mounted = await $.ui.mount({ plugin: 'meus-mods', surface: 'terminal', component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
 
-  expect(await mounted.find({ type: 'Text', text: '0 de 1 mods ativos' })).toBeDefined()
-})
+    expect(await mounted.find({ type: 'Text', text: expected })).toBeDefined()
+  })
+}

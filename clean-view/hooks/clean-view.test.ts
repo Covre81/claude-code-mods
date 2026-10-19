@@ -1,4 +1,6 @@
+import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { summarize } from './register'
 
@@ -60,5 +62,29 @@ describe('render', () => {
     expect(await engineDrew({ stdout: 'x' })).toBe(false)
     expect(await engineDrew({ stdout: 'x' }, true)).toBe(true)
     expect(await engineDrew({ stdout: 'x', interrupted: true })).toBe(true)
+  })
+})
+
+describe('session.start', () => {
+  // Other plugins (the meus-mods panel) cannot see this atom's initial: the
+  // state must hold the real value from the start, not read as unset.
+  async function published($: Engine, on: On, saved: Record<string, unknown> = {}) {
+    mock.store(on, saved)
+    const writes: unknown[] = []
+    on('state.set', { plugin: 'clean-view' }, ($, e, next) => {
+      writes.push((e as { value: unknown }).value)
+      return next(e)
+    })
+    on('session.start', (_$, e) => ({ cwd: e.cwd }) as never)
+    await $.session.start({ cwd: 'C:/x', surface: 'terminal', isInteractive: true } as never)
+    return writes
+  }
+
+  test('publishes the state even when nothing was saved', async ($, on) => {
+    expect(await published($, on)).toEqual([false])
+  })
+
+  test('a saved choice wins over the initial', async ($, on) => {
+    expect(await published($, on, { isEnabled: true })).toEqual([true])
   })
 })

@@ -44,7 +44,9 @@ export function summarize(tool: string, input: unknown, output: unknown): Line |
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
-    if (typeof saved === 'boolean') await update($, isEnabledRef, () => saved)
+    // Published even when nothing was saved: other plugins (the meus-mods panel)
+    // read the state, never this atom's initial, so unset would read as unknown.
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     await $.command.register({
       name: 'clean-view',
       description: 'Liga/desliga o clean-view: resume cada chamada de ferramenta numa linha.',
