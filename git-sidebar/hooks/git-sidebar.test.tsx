@@ -147,11 +147,11 @@ describe('the pane', () => {
     expect(opened.text).toContain('3 worktrees, 4 branches')
 
     const ui = await $.ui.mount({ plugin: 'git-sidebar', surface: 'terminal', component: 'Pane', requestId: 'git', props: PANE_PROPS })
-    expect(await ui.find({ key: 'wt:1' })).toBeDefined()
-    expect((await ui.find({ key: 'br:1' }))?.text).toContain('feature/login')
+    expect(await ui.find({ key: `wt:${FEATURE}` })).toBeDefined()
+    expect((await ui.find({ key: 'br:feature/login' }))?.text).toContain('feature/login')
     expect(await ui.find({ type: 'Text', text: /↑3 ↓1/ })).toBeDefined()
 
-    await ui.press({ key: 'wt:1' })
+    await ui.press({ key: `wt:${FEATURE}` })
     expect(calls.cd).toEqual([FEATURE])
     await ui.unmount()
   })
@@ -162,7 +162,7 @@ describe('the pane', () => {
     await openSidebar($)
     const ui = await $.ui.mount({ plugin: 'git-sidebar', surface: 'terminal', component: 'Pane', requestId: 'git', props: PANE_PROPS })
 
-    await ui.press({ key: 'br:2' })
+    await ui.press({ key: 'br:spike' })
     await ui.redraw()
     expect(await ui.find({ type: 'Text', text: /add spike/ })).toBeDefined()
     expect(await ui.find({ key: 'switch' })).toBeDefined()
@@ -175,7 +175,7 @@ describe('the pane', () => {
     await ui.press({ key: 'switch' })
     expect(calls.switched).toEqual(['spike'])
 
-    await ui.press({ key: 'br:1' })
+    await ui.press({ key: 'br:feature/login' })
     await ui.redraw()
     expect(await ui.find({ key: 'open' })).toBeDefined()
     await ui.press({ key: 'open' })
@@ -214,9 +214,10 @@ describe('the Arquivos tab', () => {
     })
     on('tool.call', () => ({ result: 'ok' })) // nothing beneath the plugins runs a Read
     on('session.cwd', () => ({ value: MAIN }))
+    let isNewDirIn = false
     on('fs.list', (_$, e) => {
       const dirs: Record<string, { name: string; kind: 'file' | 'dir' }[]> = {
-        '.': [{ name: 'src', kind: 'dir' }, { name: 'notes.md', kind: 'file' }, { name: '.git', kind: 'dir' }],
+        '.': [...(isNewDirIn ? [{ name: 'aaa', kind: 'dir' as const }] : []), { name: 'src', kind: 'dir' }, { name: 'notes.md', kind: 'file' }, { name: '.git', kind: 'dir' }],
         src: [{ name: 'b.ts', kind: 'file' }],
       }
       // the engine hands hooks the absolute path
@@ -229,7 +230,7 @@ describe('the Arquivos tab', () => {
 
     await ui.press({ key: 'tab:files' })
     await ui.redraw()
-    expect(await ui.find({ key: 'f:0' })).toBeDefined() // src
+    expect(await ui.find({ key: 'f:src' })).toBeDefined() // src
     expect(await ui.find({ type: 'Text', text: /notes\.md/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /\.git/ })).toBeUndefined()
 
@@ -243,14 +244,17 @@ describe('the Arquivos tab', () => {
     await ui.redraw()
     expect(await mark('○')).toBeDefined()
 
-    await ui.press({ key: 'f:0' })
+    // the tree changes between the draw and the click: the click still opens the row it was drawn for
+    isNewDirIn = true
+    await ui.press({ key: 'refresh' })
+    await ui.press({ key: 'f:src' })
     await ui.redraw()
     expect(await ui.find({ type: 'Text', text: /b\.ts/ })).toBeDefined()
     expect(await mark('M')).toBeDefined() // now src/b.ts too
 
     await ui.press({ key: 'tab:branches' })
     await ui.redraw()
-    expect(await ui.find({ key: 'br:1' })).toBeDefined()
+    expect(await ui.find({ key: 'br:feature/login' })).toBeDefined()
     await ui.unmount()
   })
 })

@@ -30,8 +30,8 @@
  */
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ProcessRunResult, Register } from 'claude-code'
-import { PREFIX, buildRows, parsePorcelain, recordTouch } from './filetree.ts'
-import type { Entry, GitMarks, Mark, Row, Touched } from './filetree.ts'
+import { fileRows, filesRoot, noteTouch, readFiles, toggleDir } from './files.ts'
+import type { Mark } from './filetree.ts'
 import {
   STATUS,
   TOPLEVEL,
@@ -69,15 +69,8 @@ let selected: string | undefined
 let commits: Commit[] = []
 let isOpen = false
 
-// "Arquivos" tab: tree of the session cwd, marked with what Claude touched and what git sees changed
+// "Arquivos" tab: tree of the session cwd, marked with what Claude touched and what git sees changed (./files.ts)
 let tab: 'branches' | 'files' = 'branches'
-let filesCwd = ''
-let listing = new Map<string, readonly Entry[]>()
-let expanded = new Set<string>()
-let gitMarks: GitMarks = new Map()
-let rows: Row[] = []
-// per cwd: the paths are relative to it, and a /cd must not mix two trees up
-const touchedByCwd = new Map<string, Touched>()
 
 const MARK_COLOR: Record<Mark, string> = { M: 'yellow', A: 'green', D: 'red', R: 'blue', U: 'red', '?': 'magenta' }
 
@@ -111,40 +104,6 @@ async function readSnapshot(run: Run, branchLimit: number): Promise<void> {
     selected = undefined
     commits = []
   }
-}
-
-async function listDir($: EngineInterface, dir: string): Promise<void> {
-  try {
-    const entries = await $.fs.list(dir || undefined)
-    listing.set(dir, entries.map(({ name, kind }) => ({ name, kind })))
-  } catch {
-    listing.delete(dir) // fail open: the tree shows without this directory
-  }
-}
-
-function redrawRows(): void {
-  rows = buildRows(listing, expanded, gitMarks, touchedByCwd.get(filesCwd) ?? new Map())
-}
-
-async function readFiles($: EngineInterface): Promise<void> {
-  try {
-    const cwd = await $.session.cwd()
-    if (cwd !== filesCwd) {
-      filesCwd = cwd
-      listing = new Map()
-      expanded = new Set()
-    }
-    const [st, prefix] = await Promise.all([
-      $.process.run(STATUS).catch(() => undefined),
-      $.process.run(PREFIX).catch(() => undefined),
-    ])
-    const root = prefix?.exitCode === 0 ? prefix.stdout.trim() : ''
-    gitMarks = st?.exitCode === 0 ? parsePorcelain(st.stdout, root) : new Map()
-    await Promise.all(['', ...expanded].map(dir => listDir($, dir)))
-  } catch {
-    gitMarks = new Map()
-  }
-  redrawRows()
 }
 
 function statusText(): string | undefined {
@@ -258,14 +217,7 @@ export const register: Register = (on, options) => {
 
   // every file Claude reads or writes gets a mark in the tree; recorded even while the pane is closed
   on('tool.call', { tool: ['Read', 'Edit', 'Write'] }, async ($, e, next) => {
-    const cwd = await $.session.cwd()
-    const touched = touchedByCwd.get(cwd) ?? new Map()
-    touchedByCwd.set(cwd, touched)
-    recordTouch(touched, cwd, e.tool, e.file_path)
-    if (isOpen && tab === 'files' && cwd === filesCwd) {
-      redrawRows()
-      $.ui.invalidate('ui.render')
-    }
+    if (noteTouch(await $.session.cwd(), e.tool, e.file_path) && isOpen && tab === 'files') $.ui.invalidate('ui.render')
     return next(e)
   }).catch(($, e, next) => next(e)) // fail open: a bookkeeping failure never blocks the tool call
 
@@ -293,19 +245,11 @@ export const register: Register = (on, options) => {
       tab = 'files'
       await readFiles($)
     } else if (tab === 'files' && key.startsWith('f:')) {
-      const row = rows[Number(key.slice(2))]
-      if (row?.kind === 'dir') {
-        if (expanded.delete(row.path)) redrawRows()
-        else {
-          expanded.add(row.path)
-          await listDir($, row.path)
-          redrawRows()
-        }
-      }
+      await toggleDir($, key.slice(2))
     } else if (key === 'refresh') {
       await refresh($, branchLimit)
     } else if (s && key.startsWith('wt:')) {
-      const wt = s.worktrees[Number(key.slice(3))]
+      const wt = s.worktrees.find(w => w.path === key.slice(3))
       if (wt && wt.path === currentWorktree(s)?.path) $.ui.toast('git-sidebar: already in this worktree')
       else if (wt) {
         await $.command
@@ -313,7 +257,7 @@ export const register: Register = (on, options) => {
           .catch(err => $.ui.toast(`git-sidebar: /cd failed: ${err}`))
       }
     } else if (s && key.startsWith('br:')) {
-      const branch = s.branches[Number(key.slice(3))]
+      const branch = s.branches.find(b => b.name === key.slice(3))
       if (branch && selected === branch.name) {
         selected = undefined
         commits = []
@@ -369,16 +313,16 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column">
           {tabs}
-          <Text dimColor>{fit(basename(filesCwd) || 'arquivos', width)}</Text>
-          {rows.length === 0 ? <Text dimColor>(vazio)</Text> : null}
-          {rows.map((r, i) => {
+          <Text dimColor>{fit(basename(filesRoot()) || 'arquivos', width)}</Text>
+          {fileRows().length === 0 ? <Text dimColor>(vazio)</Text> : null}
+          {fileRows().map(r => {
             const marks = (r.touch ? 2 : 0) + (r.git ? 2 : 0)
             const indent = '  '.repeat(r.depth)
             const label = fit(`${indent}${r.kind === 'dir' ? (r.expanded ? '▾ ' : '▸ ') : '  '}${r.name}`, width - marks)
             return (
-              <Box key={`f-row:${i}`} flexDirection="row">
+              <Box key={`f-row:${r.path}`} flexDirection="row">
                 {r.kind === 'dir' ? (
-                  <Button key={`f:${i}`} plain label={label} onPress={noop} />
+                  <Button key={`f:${r.path}`} plain label={label} onPress={noop} />
                 ) : (
                   <Text dimColor={!r.touch && !r.git}>{label}</Text>
                 )}
@@ -419,17 +363,17 @@ export const register: Register = (on, options) => {
         <Box key="wt-head" marginTop={1}>
           <Text bold color="cyan">{`Worktrees (${s.worktrees.length})`}</Text>
         </Box>
-        {s.worktrees.map((wt, i) => {
+        {s.worktrees.map(wt => {
           const isHere = wt === here
           const name = wt.branch ?? (wt.bare ? '(bare)' : `(${wt.head.slice(0, 7)})`)
           const dirty = wt.dirty ? ` ~${wt.dirty}` : ''
           const flags = `${wt.locked ? ' locked' : ''}${wt.prunable ? ' prunable' : ''}`
           const room = width - 2 - dirty.length - flags.length
           return (
-            <Box key={`wt-row:${i}`} flexDirection="row">
+            <Box key={`wt-row:${wt.path}`} flexDirection="row">
               <Text color="green">{isHere ? '● ' : '  '}</Text>
               <Button
-                key={`wt:${i}`}
+                key={`wt:${wt.path}`}
                 plain
                 dimColor={!isHere}
                 label={fit(`${basename(wt.path)}  ${name}`, room)}
@@ -444,16 +388,16 @@ export const register: Register = (on, options) => {
         <Box key="br-head" marginTop={1}>
           <Text bold color="cyan">{`Branches (${s.branches.length})`}</Text>
         </Box>
-        {s.branches.map((b, i) => {
+        {s.branches.map(b => {
           const isHere = here?.branch === b.name
           const marker = isHere ? '* ' : b.worktree ? '+ ' : '  '
           const track = trackLabel(b)
           const room = width - 2 - (track ? track.length + 1 : 0)
           return (
-            <Box key={`br-row:${i}`} flexDirection="row">
+            <Box key={`br-row:${b.name}`} flexDirection="row">
               <Text color={isHere ? 'green' : 'blue'}>{marker}</Text>
               <Button
-                key={`br:${i}`}
+                key={`br:${b.name}`}
                 plain
                 dimColor={!isHere && selected !== b.name}
                 label={fit(b.name, room)}
