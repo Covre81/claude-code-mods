@@ -55,11 +55,15 @@ export const register: Register = on => {
     const line = describe(e as unknown as Record<string, unknown>)
     // Only a TodoWrite changes the progress here; any other call leaves it as it was.
     const progress = e.tool === 'TodoWrite' ? todoProgress(e.todos) : undefined
-    await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress } : a)))
+    const bump = (a: RadarAgent): RadarAgent => ({ ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress })
+    if (e.tool !== 'TaskCreate' && e.tool !== 'TaskUpdate') {
+      await update($, agents, list => list.map(a => (a.id === id ? bump(a) : a)))
+      return next(e)
+    }
+    // TaskCreate's id exists only in its result, so the Task tools count once the call has answered, in one update.
     const r = await next(e)
-    // TaskCreate's id exists only in its result, so the Task tools count once the call has answered.
     const change = taskChange(e as unknown as Record<string, unknown>, r)
-    if (change) await update($, agents, list => list.map(a => (a.id === id ? withTask(a, change) : a))).catch(() => {}) // never lose the tool's result over the radar
+    await update($, agents, list => list.map(a => (a.id === id ? (change ? withTask(bump(a), change) : bump(a)) : a))).catch(() => {}) // never lose the tool's result over the radar
     return r
   })
 
@@ -119,16 +123,19 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const mine = (
       <Box flexDirection="column">
-        {shown.slice(0, BAND_ROWS).map(a => (
-          <Text wrap="truncate-end">
+        {shown.slice(0, BAND_ROWS).map(a => {
+          const m = meta(a)
+          return (
+          <Text key={a.id} wrap="truncate-end">
             <Text color={color(a)} bold>{` ${icon(a)} ${a.description}`}</Text>
             <Text dimColor>{`  ${elapsed(a)} · ${a.tools} tools`}</Text>
             {a.status === 'running' && <Text>{` · ${a.last}`}</Text>}
             {a.status === 'failed' && <Text color="red">{` · ${a.last}`}</Text>}
-            {meta(a) && <Text dimColor>{` · ${meta(a)}`}</Text>}
+            {m && <Text dimColor>{` · ${m}`}</Text>}
             {a.progress ? <Text>{` · ${a.progress}`}</Text> : null}
           </Text>
-        ))}
+          )
+        })}
         {shown.length > BAND_ROWS && <Text dimColor>{`   +${shown.length - BAND_ROWS} more · /radar`}</Text>}
       </Box>
     )
