@@ -25,6 +25,7 @@ Function-hook mods for [Claude Code](https://claude.com/claude-code): shell safe
 | `turn-inspector` | Side pane displaying the session turn-by-turn: every model request and what it carried. |
 | `clean-view` | Collapses each successful tool call into a single concise line (`Edit file +12 −3`); errors and in-flight calls retain the full block. |
 | `webfetch-cache` | Serves repeated WebFetch requests (identical URL and prompt) directly from the session cache. |
+| `reflexo` | Detects corrections and constraints in prompts, offering to save them as rules in `CLAUDE.md`. |
 
 ### Agents & Workflow
 
