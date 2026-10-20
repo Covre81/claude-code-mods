@@ -1,0 +1,7 @@
+{
+  "name": "reflexo",
+  "description": "Offer to save a correction as a CLAUDE.md rule",
+  "version": "0.1.0",
+  "author": "Claude",
+  "entrypoint": "hooks/register.tsx"
+}
