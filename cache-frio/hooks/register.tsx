@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { Register, EngineInterface } from 'claude-code'
 
 const isEnabledRef = atom({ plugin: 'cache-frio', key: 'isEnabled' } as const, true)
 
@@ -7,6 +7,11 @@ const isEnabledRef = atom({ plugin: 'cache-frio', key: 'isEnabled' } as const, t
 // Upgrade: read the TTL from the event once the host exposes it (today only PreModelSwitch has cache_ttl).
 const TTL_MS = 60 * 60 * 1000
 const MIN_TOKENS = 100_000
+
+export function minutesLeft(idleMs: number): number {
+  return Math.max(0, Math.floor((TTL_MS - idleMs) / 60_000))
+}
+
 /** Origins with a person at the keyboard: composer Enter and Remote Control. */
 const HUMAN = new Set(['composer', 'bridge'])
 const SEND = 'Mandar assim mesmo'
@@ -23,8 +28,41 @@ const formatIdle = (ms: number) => {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
 }
 
+async function refresh($: EngineInterface, state: { lastAnswerAt: number | undefined; ticker: { cancel: () => void } | undefined }) {
+  const { lastAnswerAt, ticker } = state
+  if (!(await read($, isEnabledRef))) {
+    if (ticker) {
+      ticker.cancel()
+      state.ticker = undefined
+    }
+    $.ui.status(undefined)
+    return
+  }
+
+  const idleMs = lastAnswerAt === undefined ? undefined : (await $.clock.now()) - lastAnswerAt
+  const tokens = (await $.session.usage()).context.tokens
+
+  if (idleMs === undefined || tokens === undefined || idleMs >= TTL_MS || tokens <= MIN_TOKENS) {
+    if (ticker) {
+      ticker.cancel()
+      state.ticker = undefined
+    }
+    $.ui.status(undefined)
+    return
+  }
+
+  $.ui.status(`cache: ${minutesLeft(idleMs)} min`)
+
+  if (!ticker) {
+    state.ticker = $.clock.every(60_000, () => refresh($, state))
+  }
+}
+
 export const register: Register = on => {
-  let lastAnswerAt: number | undefined
+  const state = {
+    lastAnswerAt: undefined as number | undefined,
+    ticker: undefined as { cancel: () => void } | undefined,
+  }
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
@@ -34,6 +72,7 @@ export const register: Register = on => {
       description: 'Liga/desliga o aviso de cache frio antes de mandar um prompt caro.',
       argumentHint: 'on|off',
     })
+    refresh($, state)
     return next(e)
   })
 
@@ -45,17 +84,19 @@ export const register: Register = on => {
     }
     await update($, isEnabledRef, () => arg === 'on')
     await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
+    if (arg === 'off') $.ui.status(undefined)
     return { text: `cache-frio ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (!e.agentId) lastAnswerAt = await $.clock.now()
+    if (!e.agentId) state.lastAnswerAt = await $.clock.now()
+    refresh($, state)
     return next(e)
   }).catch(($, e, next) => next(e))
 
   on('prompt.submit', async ($, e, next) => {
     if (!(await read($, isEnabledRef))) return next(e)
-    const idleMs = lastAnswerAt === undefined ? undefined : (await $.clock.now()) - lastAnswerAt
+    const idleMs = state.lastAnswerAt === undefined ? undefined : (await $.clock.now()) - state.lastAnswerAt
     const tokens = (await $.session.usage()).context.tokens // free without `breakdown`
     if (idleMs === undefined || tokens === undefined || !isCold({ idleMs, tokens, origin: e.origin.kind })) return next(e)
     const choice = await $.ui.ask(

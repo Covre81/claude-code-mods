@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
-import { isCold } from './register'
+import { isCold, minutesLeft } from './register'
 
 const HOUR = 60 * 60 * 1000
 
@@ -15,13 +15,27 @@ describe('isCold', () => {
   })
 })
 
+describe('minutesLeft', () => {
+  test('returns minutes remaining before cold, floored at 0', () => {
+    expect(minutesLeft(0)).toBe(60)
+    expect(minutesLeft(15 * 60_000)).toBe(45)
+    expect(minutesLeft(59 * 60_000 + 59_999)).toBe(0)
+    expect(minutesLeft(HOUR)).toBe(0)
+    expect(minutesLeft(HOUR + 1)).toBe(0)
+  })
+})
+
 type Stubs = { now: number[]; tokens: number; answer?: string; askThrows?: boolean }
 
 /** Core stubs: the clock walks through `now`, usage reports `tokens`, AskUserQuestion answers `answer`. */
 function stub(on: On, s: Stubs) {
-  const seen = { asked: [] as string[], filled: [] as string[], sent: [] as string[] }
+  const seen = { asked: [] as string[], filled: [] as string[], sent: [] as string[], status: [] as string[] }
   on('clock.now', () => ({ value: s.now.shift() }) as never)
   on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: s.tokens, window: 1_000_000 }, rateLimits: [] } }) as never)
+  on('ui.status', (_, e) => {
+    seen.status.push((e as unknown as { value: string | undefined }).value ?? '')
+    return { value: true } as never
+  })
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     if (s.askThrows) throw new Error('dismissed')
     const q = (e as { questions: { question: string }[] }).questions[0]!.question
