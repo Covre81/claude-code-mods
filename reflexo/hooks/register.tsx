@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, EngineInterface } from 'claude-code'
-import { looksLikeRule } from './rule';
+import { looksLikeRule } from './rule'
 
 const isEnabledRef = atom({ plugin: 'reflexo', key: 'isEnabled' } as const, true)
 
@@ -9,15 +9,17 @@ const GLOBAL = 'Global (~/.claude/CLAUDE.md)'
 const IGNORE = 'Ignorar'
 const HEADING = '## Regras capturadas'
 
+// The rule waits from prompt.submit to the end of that turn; one session runs one turn at a time, so one slot is enough.
 let queuedRule: string | null = null
+
+const statusText = (isEnabled: boolean) => `reflexo: ${isEnabled ? 'on' : 'off'}`
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
     await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
 
-    const isEnabled = await read($, isEnabledRef)
-    $.ui.status(`reflexo: ${isEnabled ? 'on' : 'off'}`)
+    $.ui.status(statusText(await read($, isEnabledRef)))
 
     await $.command.register({
       name: 'reflexo',
@@ -33,11 +35,11 @@ export const register: Register = on => {
       const isEnabled = await read($, isEnabledRef)
       return { text: `reflexo esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /reflexo on · /reflexo off` }
     }
-    await update($, isEnabledRef, () => arg === 'on')
-    await $.store.set('isEnabled', arg === 'on')
     const isEnabled = arg === 'on'
-    $.ui.status(`reflexo: ${isEnabled ? 'on' : 'off'}`)
-    return { text: `reflexo ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+    await update($, isEnabledRef, () => isEnabled)
+    await $.store.set('isEnabled', isEnabled)
+    $.ui.status(statusText(isEnabled))
+    return { text: `reflexo ${isEnabled ? 'ativado' : 'desativado'}.` }
   })
 
   on('prompt.submit', async ($, e, next) => {
