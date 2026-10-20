@@ -25,6 +25,14 @@ describe('looksLikeRule', () => {
     expect(looksLikeRule('não sei')).toBe(false)
     expect(looksLikeRule('nao sei')).toBe(false)
     expect(looksLikeRule("I don't know")).toBe(false)
+    expect(looksLikeRule('não entendi, explica de novo')).toBe(false)
+    expect(looksLikeRule('não funcionou')).toBe(false)
+    expect(looksLikeRule('nao consegui rodar')).toBe(false)
+  })
+
+  test('rejects multi-line prompts', () => {
+    expect(looksLikeRule('sempre X\n## Outra')).toBe(false)
+    expect(looksLikeRule('sempre X\r\nmais')).toBe(false)
   })
 
   test('rejects long prompts', () => {
@@ -97,7 +105,7 @@ describe('reflexo hooks', () => {
     const seen = stub(on, { answer: 'Projeto (CLAUDE.md)' })
     await $.prompt.submit(submit('nunca use sed no Windows'))
     await $.turn.complete(answered)
-    expect(seen.asked).toEqual([`Salvar como regra? "nunca use sed no Windows"`])
+    expect(seen.asked).toEqual([`Salvar como regra: "nunca use sed no Windows"?`])
     expect(seen.written.length).toBe(1)
     expect(seen.written[0]!.path.endsWith('CLAUDE.md')).toBe(true) // engine resolves it under the session cwd
     expect(seen.written[0]!.text).toBe('## Regras capturadas\n- nunca use sed no Windows\n')
@@ -158,10 +166,10 @@ describe('reflexo hooks', () => {
     expect(seen.written.length).toBe(0)
   })
 
-  test('session.start publishes the status', async ($, on) => {
+  test('session.start draws no status line', async ($, on) => {
     const seen = stub(on, {})
     on('session.start', () => ({ cwd: 'C:/t' }) as never)
     await $.session.start({ cwd: 'C://t' } as never)
-    expect(seen.status.at(-1)).toBe('reflexo: on')
+    expect(seen.status).toEqual([])
   })
 })

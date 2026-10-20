@@ -12,14 +12,10 @@ const HEADING = '## Regras capturadas'
 // The rule waits from prompt.submit to the end of that turn; one session runs one turn at a time, so one slot is enough.
 let queuedRule: string | null = null
 
-const statusText = (isEnabled: boolean) => `reflexo: ${isEnabled ? 'on' : 'off'}`
-
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
     await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
-
-    $.ui.status(statusText(await read($, isEnabledRef)))
 
     await $.command.register({
       name: 'reflexo',
@@ -38,7 +34,6 @@ export const register: Register = on => {
     const isEnabled = arg === 'on'
     await update($, isEnabledRef, () => isEnabled)
     await $.store.set('isEnabled', isEnabled)
-    $.ui.status(statusText(isEnabled))
     return { text: `reflexo ${isEnabled ? 'ativado' : 'desativado'}.` }
   })
 
@@ -52,7 +47,7 @@ export const register: Register = on => {
     const rule = queuedRule
     queuedRule = null
     if (rule === null) return next(e)
-    const answer = await $.ui.ask(`Salvar como regra? "${rule}"`, { header: 'Reflexo', options: [PROJECT, GLOBAL, IGNORE] })
+    const answer = await $.ui.ask(`Salvar como regra: "${rule}"?`, { header: 'Reflexo', options: [PROJECT, GLOBAL, IGNORE] })
     if (answer === PROJECT) await appendRule($, 'CLAUDE.md', rule) // relative = session cwd
     else if (answer === GLOBAL) {
       const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
