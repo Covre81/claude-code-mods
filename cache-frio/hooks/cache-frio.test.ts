@@ -89,6 +89,17 @@ describe('prompt.submit', () => {
     expect(seen.status.at(-1)).toBe('')
   })
 
+  test('/cache-frio on brings the countdown back without waiting for a turn', async ($, on) => {
+    const seen = stub(on, { now: [0, 10 * 60 * 1000, 11 * 60 * 1000], tokens: 180_000 })
+    on('store.set', () => ({ value: undefined }) as never)
+    const at = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } }
+    await $.turn.complete(answered)
+    await $.command.run({ command: 'cache-frio', args: 'off', ...at } as never)
+    expect(seen.status.at(-1)).toBe('')
+    await $.command.run({ command: 'cache-frio', args: 'on', ...at } as never)
+    expect(seen.status.at(-1)).toBe('cache: 49 min')
+  })
+
   test('cold cache asks; send sends, compact and cancel hold the text back in the box', async ($, on) => {
     const s: Stubs = { now: [0, 0, 2 * HOUR, 2 * HOUR, 3 * HOUR], tokens: 180_000, answer: 'Mandar assim mesmo' }
     const seen = stub(on, s)

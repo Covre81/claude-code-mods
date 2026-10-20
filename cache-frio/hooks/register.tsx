@@ -74,7 +74,7 @@ export const register: Register = on => {
     }
     await update($, isEnabledRef, () => arg === 'on')
     await $.store.set('isEnabled', arg === 'on') // $.state is per session; the store survives a restart
-    if (arg === 'off') $.ui.status(undefined)
+    await refresh($, state) // on shows the countdown now, off hides it
     return { text: `cache-frio ${arg === 'on' ? 'ativado' : 'desativado'}.` }
   })
 
