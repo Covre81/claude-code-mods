@@ -97,7 +97,7 @@ describe('reflexo hooks', () => {
     const seen = stub(on, { answer: 'Projeto (CLAUDE.md)' })
     await $.prompt.submit(submit('nunca use sed no Windows'))
     await $.turn.complete(answered)
-    expect(seen.asked).toEqual(['Salvar como regra?'])
+    expect(seen.asked).toEqual([`Salvar como regra? "nunca use sed no Windows"`])
     expect(seen.written.length).toBe(1)
     expect(seen.written[0]!.path.endsWith('CLAUDE.md')).toBe(true) // engine resolves it under the session cwd
     expect(seen.written[0]!.text).toBe('## Regras capturadas\n- nunca use sed no Windows\n')

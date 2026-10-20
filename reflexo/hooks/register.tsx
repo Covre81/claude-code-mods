@@ -46,10 +46,11 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId) return next(e)
     const rule = queuedRule
     queuedRule = null
     if (rule === null) return next(e)
-    const answer = await $.ui.ask('Salvar como regra?', { header: 'Reflexo', options: [PROJECT, GLOBAL, IGNORE] })
+    const answer = await $.ui.ask(`Salvar como regra? "${rule}"`, { header: 'Reflexo', options: [PROJECT, GLOBAL, IGNORE] })
     if (answer === PROJECT) await appendRule($, 'CLAUDE.md', rule) // relative = session cwd
     else if (answer === GLOBAL) {
       const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
