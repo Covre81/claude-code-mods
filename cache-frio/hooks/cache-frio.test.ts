@@ -17,11 +17,11 @@ describe('isCold', () => {
 
 describe('minutesLeft', () => {
   test('returns minutes remaining before cold, floored at 0', () => {
-    expect(minutesLeft(0)).toBe(60)
-    expect(minutesLeft(15 * 60_000)).toBe(45)
-    expect(minutesLeft(59 * 60_000 + 59_999)).toBe(0)
-    expect(minutesLeft(HOUR)).toBe(0)
-    expect(minutesLeft(HOUR + 1)).toBe(0)
+    expect(minutesLeft({ idleMs: 0 })).toBe(60)
+    expect(minutesLeft({ idleMs: 15 * 60_000 })).toBe(45)
+    expect(minutesLeft({ idleMs: 59 * 60_000 + 59_999 })).toBe(0)
+    expect(minutesLeft({ idleMs: HOUR })).toBe(0)
+    expect(minutesLeft({ idleMs: HOUR + 1 })).toBe(0)
   })
 })
 
@@ -33,9 +33,10 @@ function stub(on: On, s: Stubs) {
   on('clock.now', () => ({ value: s.now.shift() }) as never)
   on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: s.tokens, window: 1_000_000 }, rateLimits: [] } }) as never)
   on('ui.status', (_, e) => {
-    seen.status.push((e as unknown as { value: string | undefined }).value ?? '')
+    seen.status.push((e as { text?: string }).text ?? '')
     return { value: true } as never
   })
+  on('clock.every', () => ({ value: { cancel() {} } }) as never)
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     if (s.askThrows) throw new Error('dismissed')
     const q = (e as { questions: { question: string }[] }).questions[0]!.question
@@ -59,15 +60,37 @@ const answered = { answer: '', durationMs: 1, isAborted: false, turnId: 't', rea
 
 describe('prompt.submit', () => {
   test('warm cache passes without asking', async ($, on) => {
-    const seen = stub(on, { now: [0, 10 * 60 * 1000], tokens: 180_000 })
+    const seen = stub(on, { now: [0, 0, 10 * 60 * 1000], tokens: 180_000 })
     await $.turn.complete(answered)
     const r = (await $.prompt.submit(submit('oi'))) as { text?: string }
     expect(r.text).toBe('oi')
     expect(seen.asked.length).toBe(0)
   })
 
+  test('status line shows the countdown after a main-loop answer', async ($, on) => {
+    const seen = stub(on, { now: [0, 10 * 60 * 1000], tokens: 180_000 })
+    await $.turn.complete(answered)
+    expect(seen.status.at(-1)).toBe('cache: 50 min')
+  })
+
+  test('status line is cleared at or below 100k tokens', async ($, on) => {
+    const seen = stub(on, { now: [0, 10 * 60 * 1000], tokens: 100_000 })
+    await $.turn.complete(answered)
+    expect(seen.status.at(-1)).toBe('')
+  })
+
+  test('status line is cleared when the mod is off', async ($, on) => {
+    const seen = stub(on, { now: [0, 10 * 60 * 1000], tokens: 180_000 })
+    on('store.get', () => ({ value: false }) as never)
+    on('command.register', () => ({ value: undefined }) as never)
+    on('session.start', () => ({ cwd: 'C:/t' }) as never)
+    await $.session.start({ cwd: 'C://t' } as never)
+    await $.turn.complete(answered)
+    expect(seen.status.at(-1)).toBe('')
+  })
+
   test('cold cache asks; send sends, compact and cancel hold the text back in the box', async ($, on) => {
-    const s: Stubs = { now: [0, 2 * HOUR, 2 * HOUR, 3 * HOUR], tokens: 180_000, answer: 'Mandar assim mesmo' }
+    const s: Stubs = { now: [0, 0, 2 * HOUR, 2 * HOUR, 3 * HOUR], tokens: 180_000, answer: 'Mandar assim mesmo' }
     const seen = stub(on, s)
     await $.turn.complete(answered)
     const r = (await $.prompt.submit(submit('continua'))) as { text?: string }
@@ -95,7 +118,7 @@ describe('prompt.submit', () => {
   })
 
   test('a failing ask lets the prompt through', async ($, on) => {
-    stub(on, { now: [0, 2 * HOUR], tokens: 180_000, askThrows: true })
+    stub(on, { now: [0, 0, 2 * HOUR], tokens: 180_000, askThrows: true })
     await $.turn.complete(answered)
     const r = (await $.prompt.submit(submit('oi'))) as { text?: string }
     expect(r.text).toBe('oi')

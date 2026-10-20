@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, EngineInterface } from 'claude-code'
+import type { Register, EngineInterface, Timer } from 'claude-code'
 
 const isEnabledRef = atom({ plugin: 'cache-frio', key: 'isEnabled' } as const, true)
 
@@ -8,7 +8,7 @@ const isEnabledRef = atom({ plugin: 'cache-frio', key: 'isEnabled' } as const, t
 const TTL_MS = 60 * 60 * 1000
 const MIN_TOKENS = 100_000
 
-export function minutesLeft(idleMs: number): number {
+export function minutesLeft({ idleMs }: { idleMs: number }): number {
   return Math.max(0, Math.floor((TTL_MS - idleMs) / 60_000))
 }
 
@@ -28,41 +28,31 @@ const formatIdle = (ms: number) => {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
 }
 
-async function refresh($: EngineInterface, state: { lastAnswerAt: number | undefined; ticker: { cancel: () => void } | undefined }) {
-  const { lastAnswerAt, ticker } = state
-  if (!(await read($, isEnabledRef))) {
-    if (ticker) {
-      ticker.cancel()
+type State = { lastAnswerAt: number | undefined; ticker: Timer | undefined }
+
+/** Never rejects: the status line is decoration and must not break the hooks that call it. */
+async function refresh($: EngineInterface, state: State): Promise<void> {
+  try {
+    const isEnabled = await read($, isEnabledRef)
+    const idleMs = isEnabled && state.lastAnswerAt !== undefined ? (await $.clock.now()) - state.lastAnswerAt : undefined
+    const tokens = idleMs === undefined ? undefined : (await $.session.usage()).context.tokens
+    // No await below: check-and-assign on state.ticker stays atomic, so overlapping refreshes can't leak a timer.
+    if (idleMs === undefined || tokens === undefined || idleMs >= TTL_MS || tokens <= MIN_TOKENS) {
+      state.ticker?.cancel()
       state.ticker = undefined
+      $.ui.status(undefined)
+      return
     }
-    $.ui.status(undefined)
-    return
-  }
-
-  const idleMs = lastAnswerAt === undefined ? undefined : (await $.clock.now()) - lastAnswerAt
-  const tokens = (await $.session.usage()).context.tokens
-
-  if (idleMs === undefined || tokens === undefined || idleMs >= TTL_MS || tokens <= MIN_TOKENS) {
-    if (ticker) {
-      ticker.cancel()
-      state.ticker = undefined
-    }
-    $.ui.status(undefined)
-    return
-  }
-
-  $.ui.status(`cache: ${minutesLeft(idleMs)} min`)
-
-  if (!ticker) {
-    state.ticker = $.clock.every(60_000, () => refresh($, state))
+    $.ui.status(`cache: ${minutesLeft({ idleMs })} min`)
+    state.ticker ??= $.clock.every(60_000, () => void refresh($, state))
+  } catch {
+    state.ticker?.cancel()
+    state.ticker = undefined
   }
 }
 
 export const register: Register = on => {
-  const state = {
-    lastAnswerAt: undefined as number | undefined,
-    ticker: undefined as { cancel: () => void } | undefined,
-  }
+  const state: State = { lastAnswerAt: undefined, ticker: undefined }
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
@@ -72,7 +62,7 @@ export const register: Register = on => {
       description: 'Liga/desliga o aviso de cache frio antes de mandar um prompt caro.',
       argumentHint: 'on|off',
     })
-    refresh($, state)
+    await refresh($, state)
     return next(e)
   })
 
@@ -90,7 +80,7 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId) state.lastAnswerAt = await $.clock.now()
-    refresh($, state)
+    await refresh($, state)
     return next(e)
   }).catch(($, e, next) => next(e))
 
