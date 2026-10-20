@@ -1,6 +1,6 @@
 // Pure parts of the "Arquivos" tab: paths -> tree rows, `git status --porcelain` -> marks,
 // tool calls -> the set of files Claude touched. No engine calls, so the tests run it as is.
-// Adapted from kurtbuhler/claude-code-filetree @003545c (MIT)
+// Adapted from data-goblin/claude-code-filetree @003545c (MIT)
 
 export type Mark = 'M' | 'A' | 'D' | 'R' | 'U' | '?'
 export type Touch = 'read' | 'write'
