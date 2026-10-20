@@ -212,6 +212,7 @@ describe('the Arquivos tab', () => {
       if (argv === 'git status --porcelain' && !cwd) return ' M src/b.ts\n?? notes.md\n'
       return undefined
     })
+    on('tool.call', () => ({ result: 'ok' })) // nothing beneath the plugins runs a Read
     on('session.cwd', () => ({ value: MAIN }))
     on('fs.list', (_$, e) => {
       const dirs: Record<string, { name: string; kind: 'file' | 'dir' }[]> = {
@@ -232,10 +233,20 @@ describe('the Arquivos tab', () => {
     expect(await ui.find({ type: 'Text', text: /notes\.md/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /\.git/ })).toBeUndefined()
 
-    await $.tool.call({ tool: 'Read', file_path: `${MAIN}/notes.md` } as never).catch(() => undefined)
+    // marks are their own Text next to the row; anchored so the legend line never matches
+    const mark = (glyph: string) => ui.find({ type: 'Text', text: new RegExp(String.raw`^\s*${glyph}$`) })
+    expect(await mark('M')).toBeDefined() // src, rolled up from src/b.ts
+    expect(await mark(String.raw`\?`)).toBeDefined() // notes.md
+    expect(await mark('○')).toBeUndefined()
+
+    await $.tool.call({ tool: 'Read', file_path: `${MAIN}/notes.md` } as never)
+    await ui.redraw()
+    expect(await mark('○')).toBeDefined()
+
     await ui.press({ key: 'f:0' })
     await ui.redraw()
     expect(await ui.find({ type: 'Text', text: /b\.ts/ })).toBeDefined()
+    expect(await mark('M')).toBeDefined() // now src/b.ts too
 
     await ui.press({ key: 'tab:branches' })
     await ui.redraw()
