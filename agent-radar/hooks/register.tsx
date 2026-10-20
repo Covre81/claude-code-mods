@@ -54,7 +54,7 @@ export const register: Register = on => {
       const id = e.agentId
       const line = describe(e as unknown as Record<string, unknown>)
       // Only a TodoWrite changes the progress; any other call leaves it as it was.
-      const progress = e.tool === 'TodoWrite' ? `${e.todos.filter(t => t.status === 'completed').length}/${e.todos.length} tarefas` : undefined
+      const progress = (e.tool === 'TodoWrite' && Array.isArray((e as any).todos)) ? `${(e as any).todos.filter((t: any) => t.status === 'completed').length}/${(e as any).todos.length} tarefas` : undefined
       await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress } : a)))
     }
     return next(e)
@@ -64,8 +64,8 @@ export const register: Register = on => {
     const r = yield* next(e) // usage rides on the step's result, once the response is whole
     if (e.agentId && r.usage) {
       const id = e.agentId
-      const { input_tokens, output_tokens } = r.usage
-      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + input_tokens + output_tokens } : a)))
+      const { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens } = r.usage
+      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + (input_tokens ?? 0) + (output_tokens ?? 0) + (cache_read_input_tokens ?? 0) + (cache_creation_input_tokens ?? 0) } : a)))
     }
     return r
   })
@@ -77,7 +77,7 @@ export const register: Register = on => {
       const failed = e.reason === 'error' || e.reason === 'aborted'
       if (e.usage) {
         // The turn's usage already sums its steps, so adding it to the step counts would double: take the larger.
-        const total = e.usage.input_tokens + e.usage.output_tokens
+      const total = (e.usage.input_tokens ?? 0) + (e.usage.output_tokens ?? 0) + (e.usage.cache_read_input_tokens ?? 0) + (e.usage.cache_creation_input_tokens ?? 0)
         await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: Math.max(a.tokens, total) } : a)))
       }
       const list = await update($, agents, all =>
