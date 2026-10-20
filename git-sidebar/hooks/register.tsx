@@ -62,6 +62,7 @@ const isEnabledRef = atom({ plugin: 'git-sidebar', key: 'isEnabled' } as const, 
 
 type Run = (argv: readonly string[], cwd?: string) => Promise<ProcessRunResult>
 
+// Pane state lives at module level: hooks and ui.render are separate calls, and one session draws one pane.
 let snap: Snapshot | undefined
 let error: string | undefined
 let selected: string | undefined
@@ -155,6 +156,14 @@ function statusText(): string | undefined {
   return `git: ${where} · ${n} worktree${n === 1 ? '' : 's'} · ${snap.branches.length} branches`
 }
 
+// Reads git again, and the file tree too while that tab shows: every refresh path goes through here.
+async function refresh($: EngineInterface, branchLimit: number): Promise<void> {
+  await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
+    error = String(err)
+  })
+  if (tab === 'files') await readFiles($)
+}
+
 export const register: Register = (on, options) => {
   const columns = paneColumns(options.columns)
   const branchLimit = maxBranches(options.maxBranches)
@@ -174,9 +183,7 @@ export const register: Register = (on, options) => {
       .catch(err => $.ui.log(`git-sidebar: /${COMMAND} not registered: ${err}`))
     $.ui.log(`git-sidebar loaded: /${COMMAND} opens the pane`, { to: 'debug' })
     if (openOnStart && (await read($, isEnabledRef))) {
-      await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
-        error = String(err)
-      })
+      await refresh($, branchLimit)
       isOpen = true
       // unasked, the engine keeps it undrawn below 144 columns until the person opens it
       await $.ui.open({ id: PANE, title: 'git', columns }).catch(err => {
@@ -216,10 +223,7 @@ export const register: Register = (on, options) => {
       $.ui.status(undefined)
       return { text: 'git-sidebar closed' }
     }
-    await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
-      error = String(err)
-    })
-    if (tab === 'files') await readFiles($)
+    await refresh($, branchLimit)
     isOpen = true
     await $.ui.open({ id: PANE, title: 'git', focus: true, columns })
     $.ui.status(statusText())
@@ -236,10 +240,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'cd' }, async ($, e, next) => {
     const r = await next(e)
     if (!isOpen) return r
-    await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
-      error = String(err)
-    })
-    if (tab === 'files') await readFiles($)
+    await refresh($, branchLimit)
     $.ui.status(statusText())
     $.ui.invalidate('ui.render')
     return r
@@ -249,10 +250,7 @@ export const register: Register = (on, options) => {
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
     if (!isOpen || e.agentId) return r
-    await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
-      error = String(err)
-    })
-    if (tab === 'files') await readFiles($)
+    await refresh($, branchLimit)
     $.ui.status(statusText())
     $.ui.invalidate('ui.render')
     return r
@@ -260,20 +258,16 @@ export const register: Register = (on, options) => {
 
   // every file Claude reads or writes gets a mark in the tree; recorded even while the pane is closed
   on('tool.call', { tool: ['Read', 'Edit', 'Write'] }, async ($, e, next) => {
-    try {
-      const cwd = await $.session.cwd()
-      const touched = touchedByCwd.get(cwd) ?? new Map()
-      touchedByCwd.set(cwd, touched)
-      recordTouch(touched, cwd, e.tool, e.file_path)
-      if (isOpen && tab === 'files' && cwd === filesCwd) {
-        redrawRows()
-        $.ui.invalidate('ui.render')
-      }
-    } catch {
-      // a bookkeeping failure must never block the tool call
+    const cwd = await $.session.cwd()
+    const touched = touchedByCwd.get(cwd) ?? new Map()
+    touchedByCwd.set(cwd, touched)
+    recordTouch(touched, cwd, e.tool, e.file_path)
+    if (isOpen && tab === 'files' && cwd === filesCwd) {
+      redrawRows()
+      $.ui.invalidate('ui.render')
     }
     return next(e)
-  })
+  }).catch(($, e, next) => next(e)) // fail open: a bookkeeping failure never blocks the tool call
 
   on('ui.close', async ($, e, next) => {
     if (e.id !== PANE) return next(e)
@@ -309,10 +303,7 @@ export const register: Register = (on, options) => {
         }
       }
     } else if (key === 'refresh') {
-      await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
-        error = String(err)
-      })
-      if (tab === 'files') await readFiles($)
+      await refresh($, branchLimit)
     } else if (s && key.startsWith('wt:')) {
       const wt = s.worktrees[Number(key.slice(3))]
       if (wt && wt.path === currentWorktree(s)?.path) $.ui.toast('git-sidebar: already in this worktree')
@@ -347,9 +338,7 @@ export const register: Register = (on, options) => {
         const sw = await $.process.run(switchArgv(target))
         if (sw.exitCode === 0) $.ui.toast(`git-sidebar: switched to ${target}`)
         else $.ui.toast(`git-sidebar: ${firstLine(sw.stderr) || 'git switch failed'}`)
-        await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
-          error = String(err)
-        })
+        await refresh($, branchLimit)
       }
     }
     $.ui.status(statusText())
