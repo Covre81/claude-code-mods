@@ -8,11 +8,13 @@ const PROJECT = 'Projeto (CLAUDE.md)'
 const GLOBAL = 'Global (~/.claude/CLAUDE.md)'
 const IGNORE = 'Ignorar'
 const HEADING = '## Regras capturadas'
-
-// The rule waits from prompt.submit to the end of that turn; one session runs one turn at a time, so one slot is enough.
-let queuedRule: string | null = null
+// Only what a person typed is a correction; task notifications and other agents' prompts are not.
+const HUMAN = new Set(['composer', 'bridge'])
 
 export const register: Register = on => {
+  // The rule waits from prompt.submit to the end of that turn; one session runs one turn at a time, so one slot is enough.
+  let queuedRule: string | null = null
+
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
     await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
@@ -38,7 +40,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if ((await read($, isEnabledRef)) && looksLikeRule(e.text)) queuedRule = e.text
+    if (HUMAN.has(e.origin.kind) && (await read($, isEnabledRef)) && looksLikeRule(e.text)) queuedRule = e.text
     return next(e) // never blocks or drops the prompt
   }).catch(($, e, next) => next(e))
 
@@ -65,17 +67,17 @@ async function appendRule($: EngineInterface, path: string, rule: string): Promi
     if (e?.code === 'ENOENT' || /ENOENT/.test(e?.message ?? '')) return ''
     throw err
   })
+  const nl = current.includes('\r\n') ? '\r\n' : '\n'
   const lines = current.split('\n')
   const at = lines.findIndex(l => l.trim() === HEADING)
   let end = at === -1 ? -1 : lines.findIndex((l, i) => i > at && /^#{1,6}\s/.test(l))
   if (end !== -1) {
     // Another section follows: insert after the section's last non-blank line, keep every other line as is.
     while (end > at + 1 && lines[end - 1]!.trim() === '') end--
-    const cr = lines[at]!.endsWith('\r') ? '\r' : ''
-    lines.splice(end, 0, `- ${rule}${cr}`)
+    lines.splice(end, 0, `- ${rule}${nl === '\r\n' ? '\r' : ''}`)
     return $.fs.write(path, lines.join('\n'))
   }
-  const eol = current === '' || current.endsWith('\n') ? '' : '\n'
-  const head = at !== -1 ? '' : `${current === '' ? '' : '\n'}${HEADING}\n`
-  await $.fs.write(path, `${current}${eol}${head}- ${rule}\n`)
+  const eol = current === '' || current.endsWith('\n') ? '' : nl
+  const head = at !== -1 ? '' : `${current === '' ? '' : nl}${HEADING}${nl}`
+  await $.fs.write(path, `${current}${eol}${head}- ${rule}${nl}`)
 }

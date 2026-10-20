@@ -144,6 +144,29 @@ describe('reflexo hooks', () => {
     expect(seen.written[0]!.text).toBe('## Regras capturadas\n- antiga\n- nunca use var\n\n## Outra\ntexto\n')
   })
 
+  test('CRLF file with the heading last: the new line keeps CRLF', async ($, on) => {
+    const existing = '# P\r\n\r\n## Regras capturadas\r\n- antiga\r\n'
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', existing })
+    await $.prompt.submit(submit('nunca use var'))
+    await $.turn.complete(answered)
+    expect(seen.written[0]!.text).toBe(`${existing}- nunca use var\r\n`)
+  })
+
+  test('CRLF file without the heading: heading and line use CRLF', async ($, on) => {
+    const existing = '# P\r\n'
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', existing })
+    await $.prompt.submit(submit('nunca use var'))
+    await $.turn.complete(answered)
+    expect(seen.written[0]!.text).toBe('# P\r\n\r\n## Regras capturadas\r\n- nunca use var\r\n')
+  })
+
+  test('a prompt that did not come from a human queues nothing', async ($, on) => {
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)' })
+    await $.prompt.submit({ text: 'nunca use var', wait: false, origin: { kind: 'task-notification' } } as never)
+    await $.turn.complete(answered)
+    expect(seen.asked.length).toBe(0)
+  })
+
   test('a non-ENOENT read error writes nothing (no overwrite of CLAUDE.md)', async ($, on) => {
     const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', readError: 'EACCES: permission denied' })
     await $.prompt.submit(submit('nunca use var'))
