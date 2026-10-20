@@ -20,7 +20,7 @@ function engine(on: any, files: Record<string, string> = {}, beneath?: unknown) 
   on('agent.spawn', () => ({ model: 'sonnet', agentId: 'a1' }))
   on('agent.list', () => ({ value: [] }))
   on('turn.complete', () => ({ text: '' }))
-  on('turn.step', async function* () { yield { text: '' } })
+  on('turn.step', async function* (_$: any, e: any) { return { answer: '', stopReason: 'end_turn', toolUses: [], usage: e.mockUsage ?? null } })
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [] }))
   on('ui.toast', (_$: any, e: any) => (toasts.push(e.text), { value: undefined }))
@@ -72,18 +72,33 @@ describe('agent-radar', () => {
   })
 
   test('model and tokens show in the band', async ($, on) => {
-    const { toasts } = engine(on)
+    engine(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     await $.agent.spawn({ prompt: 'run it', description: 'sweep runner' } as any)
 
     const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
     expect(await band.find({ type: 'Text', text: /sonnet/ })).toBeDefined()
 
-    await $.turn.step({ usage: { model: 'sonnet', input_tokens: 1000, output_tokens: 500 }, agentId: 'a1' } as any)
+    const step: any = $.turn.step({ model: 'sonnet', mockUsage: { model: 'sonnet', input_tokens: 1000, output_tokens: 500 }, agentId: 'a1' } as any)
+    if (step[Symbol.asyncIterator]) for await (const _ of step); else await step
     expect(await band.find({ type: 'Text', text: /1\.5k tok/ })).toBeDefined()
 
-    await $.turn.complete({ reason: 'answer', answer: 'done', usage: { model: 'sonnet', input_tokens: 500, output_tokens: 500 }, agentId: 'a1' } as any)
+    await $.turn.complete({ reason: 'answer', answer: 'done', usage: { model: 'sonnet', input_tokens: 1200, output_tokens: 800 }, agentId: 'a1' } as any)
     expect(await band.find({ type: 'Text', text: /2k tok/ })).toBeDefined()
+    await band.unmount()
+  })
+
+  test('TodoWrite progress shows as N/M tarefas and survives later tool calls', async ($, on) => {
+    engine(on)
+    on('tool.call', () => ({ result: 'ok' }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.agent.spawn({ prompt: 'run it', description: 'sweep runner' } as any)
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    const todos = Array.from({ length: 7 }, (_, i) => ({ content: `t${i}`, activeForm: `t${i}`, status: i < 3 ? 'completed' : 'pending' }))
+    await $.tool.call({ tool: 'TodoWrite', tool_use_id: 'u1', todos, agentId: 'a1' } as any)
+    expect(await band.find({ type: 'Text', text: /3\/7 tarefas/ })).toBeDefined()
+    await $.tool.call({ tool: 'Read', tool_use_id: 'u2', file_path: '/work/x.ts', agentId: 'a1' } as any)
+    expect(await band.find({ type: 'Text', text: /3\/7 tarefas/ })).toBeDefined()
     await band.unmount()
   })
 

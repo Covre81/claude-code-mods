@@ -53,24 +53,21 @@ export const register: Register = on => {
     if (e.agentId) {
       const id = e.agentId
       const line = describe(e as unknown as Record<string, unknown>)
-      let progress = ''
-      if (e.tool === 'TodoWrite' && (e as any).todos) {
-        const tasks = (e as any).todos
-        const done = tasks.filter((t: any) => t.status === 'done' || t.status === 'completed').length
-        progress = `${done}/${tasks.length} tarefas`
-      }
-      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress } : a)))
+      // Only a TodoWrite changes the progress; any other call leaves it as it was.
+      const progress = e.tool === 'TodoWrite' ? `${e.todos.filter(t => t.status === 'completed').length}/${e.todos.length} tarefas` : undefined
+      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress } : a)))
     }
     return next(e)
   })
 
   on('turn.step', async function* ($, e, next) {
-    if (e.agentId && (e as any).usage) {
+    const r = yield* next(e) // usage rides on the step's result, once the response is whole
+    if (e.agentId && r.usage) {
       const id = e.agentId
-      const { input_tokens, output_tokens } = (e as any).usage
+      const { input_tokens, output_tokens } = r.usage
       await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + input_tokens + output_tokens } : a)))
     }
-    yield* next(e)
+    return r
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -78,9 +75,10 @@ export const register: Register = on => {
     if (e.agentId) {
       const id = e.agentId
       const failed = e.reason === 'error' || e.reason === 'aborted'
-      if ((e as any).usage) {
-        const { input_tokens, output_tokens } = (e as any).usage
-        await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + input_tokens + output_tokens } : a)))
+      if (e.usage) {
+        // The turn's usage already sums its steps, so adding it to the step counts would double: take the larger.
+        const total = e.usage.input_tokens + e.usage.output_tokens
+        await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: Math.max(a.tokens, total) } : a)))
       }
       const list = await update($, agents, all =>
         all.map(a => (a.id === id ? { ...a, status: failed ? ('failed' as const) : ('done' as const), endedAt: Date.now(), last: failed ? `stopped: ${e.reason}` : 'finished' } : a)),
@@ -120,9 +118,10 @@ export const register: Register = on => {
           <Text wrap="truncate-end">
             <Text color={color(a)} bold>{` ${icon(a)} ${a.description}`}</Text>
             <Text dimColor>{`  ${elapsed(a)} · ${a.tools} tools`}</Text>
-            {a.status === 'running' && <Text>{` · ${a.model} · ${formatTokens(a.tokens)}`}</Text>}
-            {a.status === 'running' && a.progress && <Text>{` · ${a.progress}`}</Text>}
+            {a.status === 'running' && <Text>{` · ${a.last}`}</Text>}
             {a.status === 'failed' && <Text color="red">{` · ${a.last}`}</Text>}
+            <Text dimColor>{` · ${a.model} · ${formatTokens(a.tokens)}`}</Text>
+            {a.progress ? <Text>{` · ${a.progress}`}</Text> : null}
           </Text>
         ))}
         {shown.length > BAND_ROWS && <Text dimColor>{`   +${shown.length - BAND_ROWS} more · /radar`}</Text>}
@@ -235,8 +234,7 @@ export function elapsed(a: Pick<RadarAgent, 'startedAt' | 'endedAt'>, at = Date.
 
 function formatTokens(n: number) {
   if (n < 1000) return `${n} tok`
-  const k = n / 1000
-  return `${k < 10 ? k.toFixed(1) : Math.round(k)}k tok`
+  return `${(Math.round(n / 100) / 10).toString()}k tok` // 1500 -> 1.5k, 2000 -> 2k, 42000 -> 42k
 }
 
 // A short label for one tool call: what a person would say the agent is doing.
