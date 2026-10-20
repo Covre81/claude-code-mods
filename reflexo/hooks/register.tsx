@@ -1,10 +1,15 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, EngineInterface, On } from 'claude-code'
+import type { Register, EngineInterface } from 'claude-code'
 import { looksLikeRule } from './reflexo.test.logic';
 
 const isEnabledRef = atom({ plugin: 'reflexo', key: 'isEnabled' } as const, true)
 
-let queuedRule: string | null = null;
+const PROJECT = 'Projeto (CLAUDE.md)'
+const GLOBAL = 'Global (~/.claude/CLAUDE.md)'
+const IGNORE = 'Ignorar'
+const HEADING = '## Regras capturadas'
+
+let queuedRule: string | null = null
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -36,57 +41,30 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    try {
-      if (!(await read($, isEnabledRef))) return next(e)
-      if (looksLikeRule(e.text)) {
-        queuedRule = e.text;
-      }
-    } catch (err) {
-      return next(err)
-    }
-    return next(e)
+    if ((await read($, isEnabledRef)) && looksLikeRule(e.text)) queuedRule = e.text
+    return next(e) // never blocks or drops the prompt
   }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
-    try {
-      if (!queuedRule) return next(e)
-
-      const rule = queuedRule;
-      queuedRule = null;
-
-      const answer = await $.ui.ask({
-        question: 'Salvar como regra?',
-        options: ['Projeto (CLAUDE.md)', 'Global (~/.claude/CLAUDE.md)', 'Ignorar'],
-      })
-
-      if (!answer || answer === 'Ignorar') {
-        return next(e)
-      }
-
-      const filePath = answer === 'Projeto (CLAUDE.md)'
-        ? (await $.fs.cwd()) + '/CLAUDE.md'
-        : (await $.fs.home()) + '/.claude/CLAUDE.md';
-
-      await appendRule($, filePath, rule);
-    } catch (err) {
-      return next(err)
+    const rule = queuedRule
+    queuedRule = null
+    if (rule === null) return next(e)
+    const answer = await $.ui.ask('Salvar como regra?', { header: 'Reflexo', options: [PROJECT, GLOBAL, IGNORE] })
+    if (answer === PROJECT) await appendRule($, 'CLAUDE.md', rule) // relative = session cwd
+    else if (answer === GLOBAL) {
+      const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
+      if (home) await appendRule($, `${home}/.claude/CLAUDE.md`, rule)
     }
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  return {}
+    return next(e) // IGNORE or free text: nothing written
+  }).catch(($, e, next) => next(e)) // fail open: a dismissed ask (rejects) or a write error never blocks the turn
 }
 
-async function appendRule($, filePath: string, rule: string) {
-  const content = await $.fs.read(filePath).catch(() => '')
-  const heading = '## Regras capturadas'
-
-  let newContent;
-  if (content.includes(heading)) {
-    newContent = content.replace(heading, `${heading}\n- ${rule}`)
-  } else {
-    newContent = content + (content ? '\n\n' : '') + `${heading}\n- ${rule}`
-  }
-
-  await $.fs.write(filePath, newContent)
+/** Appends one line under the heading; never rewrites what is already in the file. */
+async function appendRule($: EngineInterface, path: string, rule: string): Promise<void> {
+  const current = await $.fs.read(path).then(r => (typeof r === 'string' ? r : ''), () => '')
+  const hasHeading = current.split('\n').some(l => l.trim() === HEADING)
+  const eol = current === '' || current.endsWith('\n') ? '' : '\n'
+  // ponytail: with the heading present the line goes at end of file, not under the heading; fine for a trailing section.
+  const head = hasHeading ? '' : `${current === '' ? '' : '\n'}${HEADING}\n`
+  await $.fs.write(path, `${current}${eol}${head}- ${rule}\n`)
 }

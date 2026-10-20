@@ -35,44 +35,31 @@ describe('looksLikeRule', () => {
   })
 })
 
-type Stubs = {
-  now: number[];
-  answer?: string;
-  askThrows?: boolean;
-  isEnabled?: boolean;
-}
+type Stubs = { answer?: string; askThrows?: boolean; existing?: string; home?: string }
 
 function stub(on: On, s: Stubs) {
-  const seen = {
-    asked: [] as string[],
-    sent: [] as string[],
-    status: [] as string[],
-    written: [] as string[]
-  }
-
-  on('clock.now', () => ({ value: s.now.shift() }) as never)
+  const seen = { asked: [] as string[], sent: [] as string[], status: [] as string[], written: [] as { path: string; text: string }[] }
   on('ui.status', (_, e) => {
     seen.status.push((e as { text?: string }).text ?? '')
     return { value: true } as never
   })
-  on('store.get', () => ({ value: s.isEnabled ?? true }) as never)
-  on('store.set', () => ({ value: true } as never) as never)
+  on('store.get', () => ({ value: true }) as never)
+  on('store.set', () => ({ value: undefined }) as never)
   on('command.register', () => ({ value: undefined }) as never)
+  on('env.get', () => ({ value: s.home ?? 'C:/Users/t' }) as never)
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     if (s.askThrows) throw new Error('dismissed')
     const q = (e as { questions: { question: string }[] }).questions[0]!.question
     seen.asked.push(q)
     return { result: { answers: { [q]: s.answer } } } as never
   })
-  on('fs.read', async (_, e) => {
-    const path = (e as { path: string }).path
-    const content = path.includes('CLAUDE.md') ? 'Existing Content' : ''
-    return { value: content } as never
+  on('fs.read', () => {
+    if (s.existing === undefined) throw new Error('ENOENT')
+    return { value: s.existing } as never
   })
-  on('fs.write', async (_, e) => {
-    const { path, content } = e as { path: string, content: string }
-    seen.written.push(`${path}:${content}`)
-    return { value: true } as never
+  on('fs.write', (_$, e) => {
+    seen.written.push(e as { path: string; text: string })
+    return { value: undefined } as never
   })
   on('prompt.submit', (_$, e) => {
     seen.sent.push((e as { text: string }).text)
@@ -86,52 +73,77 @@ const submit = (text: string) => ({ text, wait: false, origin: { kind: 'composer
 const answered = { answer: '', durationMs: 1, isAborted: false, turnId: 't', reason: 'answer' } as never
 
 describe('reflexo hooks', () => {
-  test('prompt.submit never drops or blocks the prompt', async ($, on) => {
-    const seen = stub(on, { now: [0], isEnabled: true })
-    const r = (await $.prompt.submit(submit('nunca use var'))) as { text?: string }
+  test('prompt.submit passes the prompt through untouched, rule or not', async ($, on) => {
+    const seen = stub(on, {})
+    const r = (await $.prompt.submit(submit('nunca use var'))) as { text?: string; drop?: string }
     expect(r.text).toBe('nunca use var')
-    expect(seen.sent).toEqual(['nunca use var'])
+    expect(r.drop).toBe(undefined)
+    const r2 = (await $.prompt.submit(submit('oi'))) as { text?: string }
+    expect(r2.text).toBe('oi')
+    expect(seen.asked.length).toBe(0) // asking waits for turn.complete
   })
 
-  test('turn.complete asks and saves rule', async ($, on) => {
-    const seen = stub(on, { now: [0], isEnabled: true, answer: 'Projeto (CLAUDE.md)' })
+  test('no rule queued: turn.complete asks nothing', async ($, on) => {
+    const seen = stub(on, {})
+    await $.prompt.submit(submit('oi'))
+    await $.turn.complete(answered)
+    expect(seen.asked.length).toBe(0)
+  })
+
+  test('Projeto appends "- <text>" under the heading, creating the file', async ($, on) => {
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)' })
+    await $.prompt.submit(submit('nunca use sed no Windows'))
+    await $.turn.complete(answered)
+    expect(seen.asked).toEqual(['Salvar como regra?'])
+    expect(seen.written.length).toBe(1)
+    expect(seen.written[0]!.path.endsWith('CLAUDE.md')).toBe(true) // engine resolves it under the session cwd
+    expect(seen.written[0]!.text).toBe('## Regras capturadas\n- nunca use sed no Windows\n')
+  })
+
+  test('Global writes to ~/.claude/CLAUDE.md', async ($, on) => {
+    const seen = stub(on, { answer: 'Global (~/.claude/CLAUDE.md)' })
     await $.prompt.submit(submit('sempre use types'))
     await $.turn.complete(answered)
-
-    expect(seen.asked[0]!).toContain('Salvar como regra?')
-    expect(seen.written[0]!).toContain('C:/t/CLAUDE.md')
-    expect(seen.written[0]!).toContain('## Regras capturadas\n- sempre use types')
+    expect(seen.written[0]!.path.split('\\').join('/')).toBe('C:/Users/t/.claude/CLAUDE.md')
   })
 
-  test('turn.complete does nothing when answer is Ignorar', async ($, on) => {
-    const seen = stub(on, { now: [0], isEnabled: true, answer: 'Ignorar' })
-    await $.prompt.submit(submit('sempre use types'))
-    await $.turn.complete(answered)
-
-    expect(seen.asked[0]!).toContain('Salvar como regra?')
-    expect(seen.written.length).toBe(0)
-  })
-
-  test('turn.complete does nothing when ask is dismissed', async ($, on) => {
-    const seen = stub(on, { now: [0], isEnabled: true, askThrows: true })
-    await $.prompt.submit(submit('sempre use types'))
-    await $.turn.complete(answered)
-
-    expect(seen.written.length).toBe(0)
-  })
-
-  test('session.start publishes status', async ($, on) => {
-    const seen = stub(on, { now: [0], isEnabled: true })
-    on('session.start', () => ({ value: { cwd: 'C:/t' } }) as any)
-    await $.session.start({ cwd: 'C:/t' } as any)
-    expect(seen.status.at(-1)).toBe('reflexo: on')
-  })
-
-  test('save appends instead of rewriting', async ($, on) => {
-    const seen = stub(on, { now: [0], isEnabled: true, answer: 'Projeto (CLAUDE.md)' })
+  test('existing content is kept verbatim; the new line is only appended', async ($, on) => {
+    const existing = '# Meu projeto\n\nregra antiga\n'
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', existing })
     await $.prompt.submit(submit('nunca use var'))
     await $.turn.complete(answered)
+    const text = seen.written[0]!.text
+    expect(text.startsWith(existing)).toBe(true)
+    expect(text.slice(existing.length)).toBe('\n## Regras capturadas\n- nunca use var\n')
+  })
 
-    expect(seen.written[0]!).toContain('## Regras capturadas\n- nunca use var\n- Existing Content')
+  test('existing heading: the line is appended, no second heading', async ($, on) => {
+    const existing = '## Regras capturadas\n- antiga\n'
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', existing })
+    await $.prompt.submit(submit('nunca use var'))
+    await $.turn.complete(answered)
+    expect(seen.written[0]!.text).toBe('## Regras capturadas\n- antiga\n- nunca use var\n')
+  })
+
+  test('Ignorar writes nothing', async ($, on) => {
+    const seen = stub(on, { answer: 'Ignorar' })
+    await $.prompt.submit(submit('sempre use types'))
+    await $.turn.complete(answered)
+    expect(seen.asked.length).toBe(1)
+    expect(seen.written.length).toBe(0)
+  })
+
+  test('a dismissed ask writes nothing and does not throw', async ($, on) => {
+    const seen = stub(on, { askThrows: true })
+    await $.prompt.submit(submit('sempre use types'))
+    await $.turn.complete(answered)
+    expect(seen.written.length).toBe(0)
+  })
+
+  test('session.start publishes the status', async ($, on) => {
+    const seen = stub(on, {})
+    on('session.start', () => ({ cwd: 'C:/t' }) as never)
+    await $.session.start({ cwd: 'C://t' } as never)
+    expect(seen.status.at(-1)).toBe('reflexo: on')
   })
 })
