@@ -2,9 +2,9 @@ export type RadarAgent = {
   id: string
   description: string
   type: string
-  model: string
+  model?: string // left out when the engine does not report it
   tokens: number
-  progress: string
+  progress?: string
   status: 'running' | 'done' | 'failed'
   startedAt: number
   endedAt?: number

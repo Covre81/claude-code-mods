@@ -6,7 +6,7 @@ const BAND = { component: 'AbovePrompt', props: { hasSurvey: false, isWorking: t
 const PANE = { component: 'Pane', requestId: 'agent-radar', props: { title: 'Agent Radar', isFocused: true, bodyColumns: 100, placement: 'dock' } }
 
 // Stands for the engine beneath the mod.
-function engine(on: any, files: Record<string, string> = {}, beneath?: unknown) {
+function engine(on: any, files: Record<string, string> = {}, beneath?: unknown, model = 'sonnet') {
   const toasts: string[] = []
   // On Windows the engine hands the hook C:\home\me\... for /home/me/...: compare without drive and with / only.
   const posix = (p: string) => p.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')
@@ -17,7 +17,7 @@ function engine(on: any, files: Record<string, string> = {}, beneath?: unknown) 
   on('session.start', (_$: any, e: any) => ({ sessionId: 's', cwd: e.cwd }))
   on('command.register', () => ({ value: undefined }))
   on('clock.every', () => ({ value: undefined }))
-  on('agent.spawn', () => ({ model: 'sonnet', agentId: 'a1' }))
+  on('agent.spawn', () => ({ model, agentId: 'a1' }))
   on('agent.list', () => ({ value: [] }))
   on('turn.complete', () => ({ text: '' }))
   on('turn.step', async function* (_$: any, e: any) { return { answer: '', stopReason: 'end_turn', toolUses: [], usage: e.mockUsage ?? null } })
@@ -34,7 +34,7 @@ describe('agent-radar', () => {
     expect(elapsed({ startedAt: 0, endedAt: 252_000 })).toBe('4m 12s')
     expect(elapsed({ startedAt: 0, endedAt: 9_000 })).toBe('9s')
     expect(label({ tool: 'mcp__plugin_playwright_playwright__browser_click' })).toBe('browser: click')
-    const done = (ago: number) => ({ id: 'x', description: 'd', type: 't', model: 'm', tokens: 0, progress: '', status: 'done' as const, startedAt: 0, endedAt: Date.now() - ago, tools: 0, last: '' })
+    const done = (ago: number) => ({ id: 'x', description: 'd', type: 't', model: 'm', tokens: 0, status: 'done' as const, startedAt: 0, endedAt: Date.now() - ago, tools: 0, last: '' })
     expect(isShown(done(5_000))).toBe(true)
     expect([done(600_000)].filter(a => isShown(a))).toEqual([]) // gone after 30 s
   })
@@ -85,6 +85,16 @@ describe('agent-radar', () => {
 
     await $.turn.complete({ reason: 'answer', answer: 'done', usage: { model: 'sonnet', input_tokens: 1200, output_tokens: 800 }, agentId: 'a1' } as any)
     expect(await band.find({ type: 'Text', text: /2k tok/ })).toBeDefined()
+    await band.unmount()
+  })
+
+  test('an unknown model and no tokens yet are left out, not shown as placeholders', async ($, on) => {
+    engine(on, {}, undefined, '') // the engine reports no model
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.agent.spawn({ prompt: 'run it', description: 'sweep runner' } as any)
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band.find({ type: 'Text', text: /sweep runner/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /unknown|0 tok/ })).toBeUndefined()
     await band.unmount()
   })
 

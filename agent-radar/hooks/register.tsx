@@ -43,7 +43,7 @@ export const register: Register = on => {
     const r = await next(e)
     if (r.agentId) {
       const id = r.agentId
-      const one: RadarAgent = { id, description: e.description || e.name || e.subagentType, type: e.subagentType, model: r.model || 'unknown', tokens: 0, progress: '', status: 'running', startedAt: Date.now(), tools: 0, last: 'starting' }
+      const one: RadarAgent = { id, description: e.description || e.name || e.subagentType, type: e.subagentType, model: r.model, tokens: 0, status: 'running', startedAt: Date.now(), tools: 0, last: 'starting' }
       await update($, agents, list => [one, ...list.filter(a => a.id !== id)].slice(0, 30))
     }
     return r
@@ -54,7 +54,7 @@ export const register: Register = on => {
       const id = e.agentId
       const line = describe(e as unknown as Record<string, unknown>)
       // Only a TodoWrite changes the progress; any other call leaves it as it was.
-      const progress = (e.tool === 'TodoWrite' && Array.isArray((e as any).todos)) ? `${(e as any).todos.filter((t: any) => t.status === 'completed').length}/${(e as any).todos.length} tarefas` : undefined
+      const progress = e.tool === 'TodoWrite' ? todoProgress(e.todos) : undefined
       await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress } : a)))
     }
     return next(e)
@@ -64,10 +64,12 @@ export const register: Register = on => {
     const r = yield* next(e) // usage rides on the step's result, once the response is whole
     if (e.agentId && r.usage) {
       const id = e.agentId
-      const { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens } = r.usage
-      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + (input_tokens ?? 0) + (output_tokens ?? 0) + (cache_read_input_tokens ?? 0) + (cache_creation_input_tokens ?? 0) } : a)))
+      const used = sumTokens(r.usage)
+      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + used } : a)))
     }
     return r
+  }).catch(async function* ($, e, next) {
+    return yield* next(e) // fail open: a radar error never breaks the step
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -77,7 +79,7 @@ export const register: Register = on => {
       const failed = e.reason === 'error' || e.reason === 'aborted'
       if (e.usage) {
         // The turn's usage already sums its steps, so adding it to the step counts would double: take the larger.
-      const total = (e.usage.input_tokens ?? 0) + (e.usage.output_tokens ?? 0) + (e.usage.cache_read_input_tokens ?? 0) + (e.usage.cache_creation_input_tokens ?? 0)
+        const total = sumTokens(e.usage)
         await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: Math.max(a.tokens, total) } : a)))
       }
       const list = await update($, agents, all =>
@@ -87,7 +89,7 @@ export const register: Register = on => {
       if (one) $.ui.toast(`${failed ? '✗' : '✓'} ${one.description} ${failed ? 'failed' : 'done'} (${elapsed(one)} · ${one.tools} tools)`)
     }
     return r
-  })
+  }).catch(($, e, next) => next(e)) // fail open: a radar error never breaks the turn
 
   on('command.run', { command: 'radar' }, async $ => {
     if (!(await read($, isEnabledRef).catch(() => true))) return { text: 'Agent Radar está desativado. Use /radar-toggle para ativar.' }
@@ -120,7 +122,7 @@ export const register: Register = on => {
             <Text dimColor>{`  ${elapsed(a)} · ${a.tools} tools`}</Text>
             {a.status === 'running' && <Text>{` · ${a.last}`}</Text>}
             {a.status === 'failed' && <Text color="red">{` · ${a.last}`}</Text>}
-            <Text dimColor>{` · ${a.model} · ${formatTokens(a.tokens)}`}</Text>
+            {meta(a) && <Text dimColor>{` · ${meta(a)}`}</Text>}
             {a.progress ? <Text>{` · ${a.progress}`}</Text> : null}
           </Text>
         ))}
@@ -203,9 +205,7 @@ async function adopt($: EngineInterface) {
       id: a.id,
       description: a.description,
       type: a.type,
-      model: 'unknown',
       tokens: 0,
-      progress: '',
       status: a.status === 'running' ? 'running' : a.status === 'completed' ? 'done' : 'failed',
       startedAt: Date.now(),
       tools: 0,
@@ -230,6 +230,22 @@ function color(a: RadarAgent) {
 export function elapsed(a: Pick<RadarAgent, 'startedAt' | 'endedAt'>, at = Date.now()) {
   const s = Math.max(0, Math.round(((a.endedAt ?? at) - a.startedAt) / 1000))
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
+// Model and tokens, each only once the engine has reported it.
+function meta(a: RadarAgent) {
+  return [a.model, a.tokens > 0 ? formatTokens(a.tokens) : undefined].filter(Boolean).join(' · ')
+}
+
+// Every token the step or turn used, cached ones included: input_tokens alone counts only the uncached part.
+function sumTokens(u: { input_tokens?: number | null; output_tokens?: number | null; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }) {
+  return (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+}
+
+// "3/7 tarefas" from a TodoWrite list; undefined when the input is not a list.
+function todoProgress(todos: unknown) {
+  if (!Array.isArray(todos)) return undefined
+  return `${todos.filter(t => t?.status === 'completed').length}/${todos.length} tarefas`
 }
 
 function formatTokens(n: number) {
