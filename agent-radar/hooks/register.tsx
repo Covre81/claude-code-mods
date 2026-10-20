@@ -43,7 +43,7 @@ export const register: Register = on => {
     const r = await next(e)
     if (r.agentId) {
       const id = r.agentId
-      const one: RadarAgent = { id, description: e.description || e.name || e.subagentType, type: e.subagentType, status: 'running', startedAt: Date.now(), tools: 0, last: 'starting' }
+      const one: RadarAgent = { id, description: e.description || e.name || e.subagentType, type: e.subagentType, model: r.model || 'unknown', tokens: 0, progress: '', status: 'running', startedAt: Date.now(), tools: 0, last: 'starting' }
       await update($, agents, list => [one, ...list.filter(a => a.id !== id)].slice(0, 30))
     }
     return r
@@ -53,9 +53,24 @@ export const register: Register = on => {
     if (e.agentId) {
       const id = e.agentId
       const line = describe(e as unknown as Record<string, unknown>)
-      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line } : a)))
+      let progress = ''
+      if (e.tool === 'TodoWrite' && (e as any).todos) {
+        const tasks = (e as any).todos
+        const done = tasks.filter((t: any) => t.status === 'done' || t.status === 'completed').length
+        progress = `${done}/${tasks.length} tarefas`
+      }
+      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress } : a)))
     }
     return next(e)
+  })
+
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId && (e as any).usage) {
+      const id = e.agentId
+      const { input_tokens, output_tokens } = (e as any).usage
+      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + input_tokens + output_tokens } : a)))
+    }
+    yield* next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -63,6 +78,10 @@ export const register: Register = on => {
     if (e.agentId) {
       const id = e.agentId
       const failed = e.reason === 'error' || e.reason === 'aborted'
+      if ((e as any).usage) {
+        const { input_tokens, output_tokens } = (e as any).usage
+        await update($, agents, list => list.map(a => (a.id === id ? { ...a, tokens: a.tokens + input_tokens + output_tokens } : a)))
+      }
       const list = await update($, agents, all =>
         all.map(a => (a.id === id ? { ...a, status: failed ? ('failed' as const) : ('done' as const), endedAt: Date.now(), last: failed ? `stopped: ${e.reason}` : 'finished' } : a)),
       )
@@ -101,7 +120,8 @@ export const register: Register = on => {
           <Text wrap="truncate-end">
             <Text color={color(a)} bold>{` ${icon(a)} ${a.description}`}</Text>
             <Text dimColor>{`  ${elapsed(a)} · ${a.tools} tools`}</Text>
-            {a.status === 'running' && <Text>{` · ${a.last}`}</Text>}
+            {a.status === 'running' && <Text>{` · ${a.model} · ${formatTokens(a.tokens)}`}</Text>}
+            {a.status === 'running' && a.progress && <Text>{` · ${a.progress}`}</Text>}
             {a.status === 'failed' && <Text color="red">{` · ${a.last}`}</Text>}
           </Text>
         ))}
@@ -184,6 +204,9 @@ async function adopt($: EngineInterface) {
       id: a.id,
       description: a.description,
       type: a.type,
+      model: 'unknown',
+      tokens: 0,
+      progress: '',
       status: a.status === 'running' ? 'running' : a.status === 'completed' ? 'done' : 'failed',
       startedAt: Date.now(),
       tools: 0,
@@ -208,6 +231,12 @@ function color(a: RadarAgent) {
 export function elapsed(a: Pick<RadarAgent, 'startedAt' | 'endedAt'>, at = Date.now()) {
   const s = Math.max(0, Math.round(((a.endedAt ?? at) - a.startedAt) / 1000))
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
+function formatTokens(n: number) {
+  if (n < 1000) return `${n} tok`
+  const k = n / 1000
+  return `${k < 10 ? k.toFixed(1) : Math.round(k)}k tok`
 }
 
 // A short label for one tool call: what a person would say the agent is doing.

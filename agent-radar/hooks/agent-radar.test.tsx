@@ -20,6 +20,7 @@ function engine(on: any, files: Record<string, string> = {}, beneath?: unknown) 
   on('agent.spawn', () => ({ model: 'sonnet', agentId: 'a1' }))
   on('agent.list', () => ({ value: [] }))
   on('turn.complete', () => ({ text: '' }))
+  on('turn.step', async function* () { yield { text: '' } })
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [] }))
   on('ui.toast', (_$: any, e: any) => (toasts.push(e.text), { value: undefined }))
@@ -33,7 +34,7 @@ describe('agent-radar', () => {
     expect(elapsed({ startedAt: 0, endedAt: 252_000 })).toBe('4m 12s')
     expect(elapsed({ startedAt: 0, endedAt: 9_000 })).toBe('9s')
     expect(label({ tool: 'mcp__plugin_playwright_playwright__browser_click' })).toBe('browser: click')
-    const done = (ago: number) => ({ id: 'x', description: 'd', type: 't', status: 'done' as const, startedAt: 0, endedAt: Date.now() - ago, tools: 0, last: '' })
+    const done = (ago: number) => ({ id: 'x', description: 'd', type: 't', model: 'm', tokens: 0, progress: '', status: 'done' as const, startedAt: 0, endedAt: Date.now() - ago, tools: 0, last: '' })
     expect(isShown(done(5_000))).toBe(true)
     expect([done(600_000)].filter(a => isShown(a))).toEqual([]) // gone after 30 s
   })
@@ -67,6 +68,22 @@ describe('agent-radar', () => {
     expect(await ui.find({ type: 'Text', text: /0 running · 1 finished/ })).toBeDefined()
     expect(await band.find({ type: 'Text', text: / ✓ sweep runner/ })).toBeDefined() // still shown for 30 s
     await ui.unmount()
+    await band.unmount()
+  })
+
+  test('model and tokens show in the band', async ($, on) => {
+    const { toasts } = engine(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.agent.spawn({ prompt: 'run it', description: 'sweep runner' } as any)
+
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    expect(await band.find({ type: 'Text', text: /sonnet/ })).toBeDefined()
+
+    await $.turn.step({ usage: { model: 'sonnet', input_tokens: 1000, output_tokens: 500 }, agentId: 'a1' } as any)
+    expect(await band.find({ type: 'Text', text: /1\.5k tok/ })).toBeDefined()
+
+    await $.turn.complete({ reason: 'answer', answer: 'done', usage: { model: 'sonnet', input_tokens: 500, output_tokens: 500 }, agentId: 'a1' } as any)
+    expect(await band.find({ type: 'Text', text: /2k tok/ })).toBeDefined()
     await band.unmount()
   })
 

@@ -2,6 +2,9 @@ export type RadarAgent = {
   id: string
   description: string
   type: string
+  model: string
+  tokens: number
+  progress: string
   status: 'running' | 'done' | 'failed'
   startedAt: number
   endedAt?: number
