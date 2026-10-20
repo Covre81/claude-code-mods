@@ -61,12 +61,13 @@ export async function toggleDir($: EngineInterface, path: string): Promise<void>
   redrawRows()
 }
 
-/** Records a Read/Edit/Write; true when the shown tree changed and needs a redraw. */
-export function noteTouch(cwd: string, tool: string, file: unknown): boolean {
+/** Records a Read/Edit/Write; true when the shown tree changed and needs a redraw.
+ *  A hidden tab skips the rebuild: readFiles rebuilds the rows when the tab is shown again. */
+export function noteTouch(cwd: string, tool: string, file: unknown, isShown: boolean): boolean {
   const touched = touchedByCwd.get(cwd) ?? new Map()
   touchedByCwd.set(cwd, touched)
   recordTouch(touched, cwd, tool, file)
-  if (cwd !== filesCwd) return false
+  if (!isShown || cwd !== filesCwd) return false
   redrawRows()
   return true
 }

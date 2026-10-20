@@ -217,7 +217,8 @@ export const register: Register = (on, options) => {
 
   // every file Claude reads or writes gets a mark in the tree; recorded even while the pane is closed
   on('tool.call', { tool: ['Read', 'Edit', 'Write'] }, async ($, e, next) => {
-    if (noteTouch(await $.session.cwd(), e.tool, e.file_path) && isOpen && tab === 'files') $.ui.invalidate('ui.render')
+    const isShown = isOpen && tab === 'files'
+    if (noteTouch(await $.session.cwd(), e.tool, e.file_path, isShown)) $.ui.invalidate('ui.render')
     return next(e)
   }).catch(($, e, next) => next(e)) // fail open: a bookkeeping failure never blocks the tool call
 
