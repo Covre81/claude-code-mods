@@ -57,7 +57,8 @@ export const register: Register = on => {
     const progress = e.tool === 'TodoWrite' ? todoProgress(e.todos) : undefined
     const bump = (a: RadarAgent): RadarAgent => ({ ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress })
     if (e.tool !== 'TaskCreate' && e.tool !== 'TaskUpdate') {
-      await update($, agents, list => list.map(a => (a.id === id ? bump(a) : a)))
+      // fail open on the radar's write only: a catch around the handler would rerun the tool if next threw
+      await update($, agents, list => list.map(a => (a.id === id ? bump(a) : a))).catch(() => {})
       return next(e)
     }
     // TaskCreate's id exists only in its result, so the Task tools count once the call has answered, in one update.
