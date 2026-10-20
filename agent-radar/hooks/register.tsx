@@ -50,14 +50,17 @@ export const register: Register = on => {
   })
 
   on('tool.call', async ($, e, next) => {
-    if (e.agentId) {
-      const id = e.agentId
-      const line = describe(e as unknown as Record<string, unknown>)
-      // Only a TodoWrite changes the progress; any other call leaves it as it was.
-      const progress = e.tool === 'TodoWrite' ? todoProgress(e.todos) : undefined
-      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress } : a)))
-    }
-    return next(e)
+    if (!e.agentId) return next(e)
+    const id = e.agentId
+    const line = describe(e as unknown as Record<string, unknown>)
+    // Only a TodoWrite changes the progress here; any other call leaves it as it was.
+    const progress = e.tool === 'TodoWrite' ? todoProgress(e.todos) : undefined
+    await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, last: line, progress: progress ?? a.progress } : a)))
+    const r = await next(e)
+    // TaskCreate's id exists only in its result, so the Task tools count once the call has answered.
+    const change = taskChange(e as unknown as Record<string, unknown>, r)
+    if (change) await update($, agents, list => list.map(a => (a.id === id ? withTask(a, change) : a))).catch(() => {}) // never lose the tool's result over the radar
+    return r
   })
 
   on('turn.step', async function* ($, e, next) {
@@ -237,15 +240,32 @@ function meta(a: RadarAgent) {
   return [a.model, a.tokens > 0 ? formatTokens(a.tokens) : undefined].filter(Boolean).join(' · ')
 }
 
-// Every token the step or turn used, cached ones included: input_tokens alone counts only the uncached part.
-function sumTokens(u: { input_tokens?: number | null; output_tokens?: number | null; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }) {
-  return (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+// Tokens the step or turn processed fresh: uncached input, cache writes and output. Cache reads are left out:
+// every step re-reads the whole cached context, so summing them counts that context once per step.
+function sumTokens(u: { input_tokens?: number | null; output_tokens?: number | null; cache_creation_input_tokens?: number | null }) {
+  return (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
 }
 
 // "3/7 tarefas" from a TodoWrite list; undefined when the input is not a list.
 function todoProgress(todos: unknown) {
   if (!Array.isArray(todos)) return undefined
   return `${todos.filter(t => t?.status === 'completed').length}/${todos.length} tarefas`
+}
+
+// What a TaskCreate or TaskUpdate did to the agent's task list: [task id, status]; undefined for any other call.
+function taskChange(e: Record<string, unknown>, r: { deny?: string; isError?: boolean; result?: unknown }): [string, string] | undefined {
+  if (r.deny !== undefined || r.isError) return undefined
+  const created = (r.result as { task?: { id?: unknown } } | undefined)?.task?.id
+  if (e.tool === 'TaskCreate' && typeof created === 'string') return [created, 'pending']
+  if (e.tool === 'TaskUpdate' && typeof e.taskId === 'string' && typeof e.status === 'string') return [e.taskId, e.status]
+  return undefined
+}
+
+function withTask(a: RadarAgent, [taskId, status]: [string, string]): RadarAgent {
+  const { [taskId]: _, ...rest } = a.tasks ?? {}
+  const tasks = status === 'deleted' ? rest : { ...rest, [taskId]: status }
+  const all = Object.values(tasks)
+  return { ...a, tasks, progress: all.length === 0 ? undefined : `${all.filter(s => s === 'completed').length}/${all.length} tarefas` }
 }
 
 function formatTokens(n: number) {

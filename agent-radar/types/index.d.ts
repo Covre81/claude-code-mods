@@ -5,6 +5,7 @@ export type RadarAgent = {
   model?: string // left out when the engine does not report it
   tokens: number
   progress?: string
+  tasks?: Record<string, string> // TaskCreate/TaskUpdate: task id -> status
   status: 'running' | 'done' | 'failed'
   startedAt: number
   endedAt?: number

@@ -112,6 +112,34 @@ describe('agent-radar', () => {
     await band.unmount()
   })
 
+  test('TaskCreate/TaskUpdate progress shows as N/M tarefas', async ($, on) => {
+    engine(on)
+    let n = 0
+    on('tool.call', (_$: any, e: any) => ({ result: e.tool === 'TaskCreate' ? { task: { id: `t${++n}`, subject: e.subject } } : { success: true, taskId: e.taskId, updatedFields: ['status'] } }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.agent.spawn({ prompt: 'run it', description: 'sweep runner' } as any)
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    for (const subject of ['a', 'b', 'c']) await $.tool.call({ tool: 'TaskCreate', tool_use_id: subject, subject, description: subject, agentId: 'a1' } as any)
+    expect(await band.find({ type: 'Text', text: /0\/3 tarefas/ })).toBeDefined()
+    await $.tool.call({ tool: 'TaskUpdate', tool_use_id: 'u1', taskId: 't1', status: 'completed', agentId: 'a1' } as any)
+    await $.tool.call({ tool: 'TaskUpdate', tool_use_id: 'u2', taskId: 't3', status: 'deleted', agentId: 'a1' } as any)
+    expect(await band.find({ type: 'Text', text: /1\/2 tarefas/ })).toBeDefined()
+    await band.unmount()
+  })
+
+  test('cache reads do not inflate the token count once per step', async ($, on) => {
+    engine(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.agent.spawn({ prompt: 'run it', description: 'sweep runner' } as any)
+    const band = await $.ui.mount({ plugin: 'agent-radar', surface: 'terminal', ...BAND } as any)
+    for (let i = 0; i < 3; i++) {
+      const step: any = $.turn.step({ model: 'sonnet', mockUsage: { model: 'sonnet', input_tokens: 100, output_tokens: 400, cache_read_input_tokens: 40_000 }, agentId: 'a1' } as any)
+      if (step[Symbol.asyncIterator]) for await (const _ of step); else await step
+    }
+    expect(await band.find({ type: 'Text', text: /· 1\.5k tok/ })).toBeDefined() // not 121.5k
+    await band.unmount()
+  })
+
   test('follows the band order file', async ($, on) => {
     // another band mod drew its column beneath
     const beneath = {
