@@ -1,14 +1,1 @@
-[
-  {
-    "hook": "prompt.submit",
-    "handler": "onPromptSubmit"
-  },
-  {
-    "hook": "turn.complete",
-    "handler": "onTurnComplete"
-  },
-  {
-    "hook": "session.start",
-    "handler": "onSessionStart"
-  }
-]
+{ "modules": ["./register.tsx"] }

@@ -1,91 +1,92 @@
-import { PluginHooks } from '@claude-code/types';
-import { looksLikeRule } from './reflexo.test';
+import { atom, read, update } from 'claude-code'
+import type { Register, EngineInterface, On } from 'claude-code'
+import { looksLikeRule } from './reflexo.test.logic';
+
+const isEnabledRef = atom({ plugin: 'reflexo', key: 'isEnabled' } as const, true)
 
 let queuedRule: string | null = null;
-let enabled = true;
 
-export async function onSessionStart($, next: any) {
-  $.ui.status(`reflexo: ${enabled ? 'on' : 'off'}`);
-  return next();
-}
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
 
-export async function onPromptSubmit($, next: any) {
-  try {
-    const { text } = $.prompt;
-    if (enabled && looksLikeRule(text)) {
-      queuedRule = text;
+    const isEnabled = await read($, isEnabledRef)
+    $.ui.status(`reflexo: ${isEnabled ? 'on' : 'off'}`)
+
+    await $.command.register({
+      name: 'reflexo',
+      description: 'Liga/desliga o reflexo (salvar correções como regras).',
+      argumentHint: 'on|off',
+    })
+    return next(e)
+  })
+
+  on('command.run', { command: 'reflexo' }, async ($, e) => {
+    const arg = e.args.trim().toLowerCase()
+    if (arg !== 'on' && arg !== 'off') {
+      const isEnabled = await read($, isEnabledRef)
+      return { text: `reflexo esta ${isEnabled ? 'ativado' : 'desativado'}. Uso: /reflexo on · /reflexo off` }
     }
-  } catch (e) {
-    // ponytail: fail-open
-    return next(e);
-  }
-  return next();
-}
+    await update($, isEnabledRef, () => arg === 'on')
+    await $.store.set('isEnabled', arg === 'on')
+    const isEnabled = arg === 'on'
+    $.ui.status(`reflexo: ${isEnabled ? 'on' : 'off'}`)
+    return { text: `reflexo ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+  })
 
-export async function onTurnComplete($, next: any) {
-  try {
-    if (!queuedRule) return next();
-
-    const rule = queuedRule;
-    queuedRule = null; // Clear before asking to avoid double-prompts on fast turns
-
-    const answer = await $.ui.ask({
-      question: 'Salvar como regra?',
-      options: ['Projeto (CLAUDE.md)', 'Global (~/.claude/CLAUDE.md)', 'Ignorar'],
-    });
-
-    if (!answer || answer === 'Ignorar') {
-      return next();
+  on('prompt.submit', async ($, e, next) => {
+    try {
+      if (!(await read($, isEnabledRef))) return next(e)
+      if (looksLikeRule(e.text)) {
+        queuedRule = e.text;
+      }
+    } catch (err) {
+      return next(err)
     }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
-    const filePath = answer === 'Projeto (CLAUDE.md)'
-      ? $.fs.cwd + '/CLAUDE.md'
-      : $.fs.home + '/.claude/CLAUDE.md';
+  on('turn.complete', async ($, e, next) => {
+    try {
+      if (!queuedRule) return next(e)
 
-    await appendRule($, filePath, rule);
-  } catch (e) {
-    // ponytail: fail-open
-    return next(e);
-  }
-  return next();
+      const rule = queuedRule;
+      queuedRule = null;
+
+      const answer = await $.ui.ask({
+        question: 'Salvar como regra?',
+        options: ['Projeto (CLAUDE.md)', 'Global (~/.claude/CLAUDE.md)', 'Ignorar'],
+      })
+
+      if (!answer || answer === 'Ignorar') {
+        return next(e)
+      }
+
+      const filePath = answer === 'Projeto (CLAUDE.md)'
+        ? (await $.fs.cwd()) + '/CLAUDE.md'
+        : (await $.fs.home()) + '/.claude/CLAUDE.md';
+
+      await appendRule($, filePath, rule);
+    } catch (err) {
+      return next(err)
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  return {}
 }
 
 async function appendRule($, filePath: string, rule: string) {
-  try {
-    const content = await $.fs.read(filePath).catch(() => '');
-    const heading = '## Regras capturadas';
+  const content = await $.fs.read(filePath).catch(() => '')
+  const heading = '## Regras capturadas'
 
-    let newContent;
-    if (content.includes(heading)) {
-      newContent = content.replace(heading, `${heading}\n- ${rule}`);
-    } else {
-      newContent = content + (content ? '\n\n' : '') + `${heading}\n- ${rule}`;
-    }
-
-    await $.fs.write(filePath, newContent);
-  } catch (e) {
-    // ponytail: swallow error in fail-open
+  let newContent;
+  if (content.includes(heading)) {
+    newContent = content.replace(heading, `${heading}\n- ${rule}`)
+  } else {
+    newContent = content + (content ? '\n\n' : '') + `${heading}\n- ${rule}`
   }
-}
 
-export async function onSlashCommand($, next: any) {
-  try {
-    const { command } = $.prompt;
-    if (command === 'reflexo') {
-      const arg = $.prompt.args[0];
-      if (arg === 'on') {
-        enabled = true;
-        $.ui.status('reflexo: on');
-      } else if (arg === 'off') {
-        enabled = false;
-        $.ui.status('reflexo: off');
-      } else {
-        $.ui.status(`reflexo: ${enabled ? 'on' : 'off'}`);
-      }
-      return next();
-    }
-  } catch (e) {
-    return next(e);
-  }
-  return next();
+  await $.fs.write(filePath, newContent)
 }
