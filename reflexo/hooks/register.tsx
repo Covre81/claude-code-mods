@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code'
 import type { Register, EngineInterface } from 'claude-code'
-import { looksLikeRule } from './reflexo.test.logic';
+import { looksLikeRule } from './rule';
 
 const isEnabledRef = atom({ plugin: 'reflexo', key: 'isEnabled' } as const, true)
 
@@ -61,7 +61,12 @@ export const register: Register = on => {
 
 /** Appends one line under the heading; never rewrites what is already in the file. */
 async function appendRule($: EngineInterface, path: string, rule: string): Promise<void> {
-  const current = await $.fs.read(path).then(r => (typeof r === 'string' ? r : ''), () => '')
+  // Only a missing file counts as empty; any other read error rethrows so nothing is written (fail open upstream).
+  const current = await $.fs.read(path).then(r => (typeof r === 'string' ? r : ''), (err: unknown) => {
+    const e = err as { code?: string; message?: string }
+    if (e?.code === 'ENOENT' || /ENOENT/.test(e?.message ?? '')) return ''
+    throw err
+  })
   const hasHeading = current.split('\n').some(l => l.trim() === HEADING)
   const eol = current === '' || current.endsWith('\n') ? '' : '\n'
   // ponytail: with the heading present the line goes at end of file, not under the heading; fine for a trailing section.

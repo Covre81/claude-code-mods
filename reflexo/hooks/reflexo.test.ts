@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
-import { looksLikeRule } from './reflexo.test.logic'
+import { looksLikeRule } from './rule'
 
 describe('looksLikeRule', () => {
   test('identifies positive rule patterns', () => {
@@ -20,6 +20,8 @@ describe('looksLikeRule', () => {
   test('rejects non-rule patterns', () => {
     expect(looksLikeRule('Como faço X?')).toBe(false)
     expect(looksLikeRule('Ola Claude')).toBe(false)
+    expect(looksLikeRule('No arquivo X, faça Y')).toBe(false)
+    expect(looksLikeRule('no problem')).toBe(false)
     expect(looksLikeRule('não sei')).toBe(false)
     expect(looksLikeRule('nao sei')).toBe(false)
     expect(looksLikeRule("I don't know")).toBe(false)
@@ -35,7 +37,7 @@ describe('looksLikeRule', () => {
   })
 })
 
-type Stubs = { answer?: string; askThrows?: boolean; existing?: string; home?: string }
+type Stubs = { answer?: string; askThrows?: boolean; existing?: string; readError?: string; home?: string }
 
 function stub(on: On, s: Stubs) {
   const seen = { asked: [] as string[], sent: [] as string[], status: [] as string[], written: [] as { path: string; text: string }[] }
@@ -54,7 +56,8 @@ function stub(on: On, s: Stubs) {
     return { result: { answers: { [q]: s.answer } } } as never
   })
   on('fs.read', () => {
-    if (s.existing === undefined) throw new Error('ENOENT')
+    if (s.readError) return { deny: s.readError } as never
+    if (s.existing === undefined) return { deny: 'ENOENT: no such file' } as never
     return { value: s.existing } as never
   })
   on('fs.write', (_$, e) => {
@@ -123,6 +126,13 @@ describe('reflexo hooks', () => {
     await $.prompt.submit(submit('nunca use var'))
     await $.turn.complete(answered)
     expect(seen.written[0]!.text).toBe('## Regras capturadas\n- antiga\n- nunca use var\n')
+  })
+
+  test('a non-ENOENT read error writes nothing (no overwrite of CLAUDE.md)', async ($, on) => {
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', readError: 'EACCES: permission denied' })
+    await $.prompt.submit(submit('nunca use var'))
+    await $.turn.complete(answered)
+    expect(seen.written.length).toBe(0)
   })
 
   test('Ignorar writes nothing', async ($, on) => {
