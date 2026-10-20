@@ -11,6 +11,9 @@
  *   - a branch row shows its last commits and what can be done with it:
  *     `switch` (clean tree only) or `open worktree` when another worktree has it
  *
+ * A second tab, "Arquivos", shows the cwd as a lazy tree marked with what Claude read
+ * or wrote this session and with `git status` (pure parts in ./filetree.ts).
+ *
  * Git runs through `$.process.run` by argv (no shell); every read is in
  * ./git.ts. Nothing here writes to the repository except `git switch`, which
  * the mod refuses while the current worktree has uncommitted changes.
@@ -26,7 +29,9 @@
  * MIT licensed. Added: an isEnabled toggle (/git-sidebar on|off) so meus-mods can control it.
  */
 import { atom, read, update } from 'claude-code'
-import type { ProcessRunResult, Register } from 'claude-code'
+import type { EngineInterface, ProcessRunResult, Register } from 'claude-code'
+import { PREFIX, buildRows, parsePorcelain, recordTouch } from './filetree.ts'
+import type { Entry, GitMarks, Mark, Row, Touched } from './filetree.ts'
 import {
   STATUS,
   TOPLEVEL,
@@ -63,6 +68,18 @@ let selected: string | undefined
 let commits: Commit[] = []
 let isOpen = false
 
+// "Arquivos" tab: tree of the session cwd, marked with what Claude touched and what git sees changed
+let tab: 'branches' | 'files' = 'branches'
+let filesCwd = ''
+let listing = new Map<string, readonly Entry[]>()
+let expanded = new Set<string>()
+let gitMarks: GitMarks = new Map()
+let rows: Row[] = []
+// per cwd: the paths are relative to it, and a /cd must not mix two trees up
+const touchedByCwd = new Map<string, Touched>()
+
+const MARK_COLOR: Record<Mark, string> = { M: 'yellow', A: 'green', D: 'red', R: 'blue', U: 'red', '?': 'magenta' }
+
 const firstLine = (text: string) => text.trim().split('\n')[0] ?? ''
 
 async function readSnapshot(run: Run, branchLimit: number): Promise<void> {
@@ -93,6 +110,40 @@ async function readSnapshot(run: Run, branchLimit: number): Promise<void> {
     selected = undefined
     commits = []
   }
+}
+
+async function listDir($: EngineInterface, dir: string): Promise<void> {
+  try {
+    const entries = await $.fs.list(dir || undefined)
+    listing.set(dir, entries.map(({ name, kind }) => ({ name, kind })))
+  } catch {
+    listing.delete(dir) // fail open: the tree shows without this directory
+  }
+}
+
+function redrawRows(): void {
+  rows = buildRows(listing, expanded, gitMarks, touchedByCwd.get(filesCwd) ?? new Map())
+}
+
+async function readFiles($: EngineInterface): Promise<void> {
+  try {
+    const cwd = await $.session.cwd()
+    if (cwd !== filesCwd) {
+      filesCwd = cwd
+      listing = new Map()
+      expanded = new Set()
+    }
+    const [st, prefix] = await Promise.all([
+      $.process.run(STATUS).catch(() => undefined),
+      $.process.run(PREFIX).catch(() => undefined),
+    ])
+    const root = prefix?.exitCode === 0 ? prefix.stdout.trim() : ''
+    gitMarks = st?.exitCode === 0 ? parsePorcelain(st.stdout, root) : new Map()
+    await Promise.all(['', ...expanded].map(dir => listDir($, dir)))
+  } catch {
+    gitMarks = new Map()
+  }
+  redrawRows()
 }
 
 function statusText(): string | undefined {
@@ -168,6 +219,7 @@ export const register: Register = (on, options) => {
     await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
       error = String(err)
     })
+    if (tab === 'files') await readFiles($)
     isOpen = true
     await $.ui.open({ id: PANE, title: 'git', focus: true, columns })
     $.ui.status(statusText())
@@ -187,6 +239,7 @@ export const register: Register = (on, options) => {
     await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
       error = String(err)
     })
+    if (tab === 'files') await readFiles($)
     $.ui.status(statusText())
     $.ui.invalidate('ui.render')
     return r
@@ -199,9 +252,27 @@ export const register: Register = (on, options) => {
     await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
       error = String(err)
     })
+    if (tab === 'files') await readFiles($)
     $.ui.status(statusText())
     $.ui.invalidate('ui.render')
     return r
+  })
+
+  // every file Claude reads or writes gets a mark in the tree; recorded even while the pane is closed
+  on('tool.call', { tool: ['Read', 'Edit', 'Write'] }, async ($, e, next) => {
+    try {
+      const cwd = await $.session.cwd()
+      const touched = touchedByCwd.get(cwd) ?? new Map()
+      touchedByCwd.set(cwd, touched)
+      recordTouch(touched, cwd, e.tool, e.file_path)
+      if (isOpen && tab === 'files' && cwd === filesCwd) {
+        redrawRows()
+        $.ui.invalidate('ui.render')
+      }
+    } catch {
+      // a bookkeeping failure must never block the tool call
+    }
+    return next(e)
   })
 
   on('ui.close', async ($, e, next) => {
@@ -222,10 +293,26 @@ export const register: Register = (on, options) => {
       await $.ui.close({ id: PANE }).catch(() => undefined)
       return r
     }
-    if (key === 'refresh') {
+    if (key === 'tab:branches') {
+      tab = 'branches'
+    } else if (key === 'tab:files') {
+      tab = 'files'
+      await readFiles($)
+    } else if (tab === 'files' && key.startsWith('f:')) {
+      const row = rows[Number(key.slice(2))]
+      if (row?.kind === 'dir') {
+        if (expanded.delete(row.path)) redrawRows()
+        else {
+          expanded.add(row.path)
+          await listDir($, row.path)
+          redrawRows()
+        }
+      }
+    } else if (key === 'refresh') {
       await readSnapshot((argv, cwd) => $.process.run(argv, { cwd }), branchLimit).catch(err => {
         error = String(err)
       })
+      if (tab === 'files') await readFiles($)
     } else if (s && key.startsWith('wt:')) {
       const wt = s.worktrees[Number(key.slice(3))]
       if (wt && wt.path === currentWorktree(s)?.path) $.ui.toast('git-sidebar: already in this worktree')
@@ -282,9 +369,47 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
+    const tabs = (
+      <Box key="tabs" flexDirection="row" columnGap={1}>
+        <Button key="tab:branches" label="Branches" plain dimColor={tab !== 'branches'} onPress={noop} />
+        <Button key="tab:files" label="Arquivos" plain dimColor={tab !== 'files'} onPress={noop} />
+      </Box>
+    )
+
+    if (tab === 'files') {
+      return (
+        <Box flexDirection="column">
+          {tabs}
+          <Text dimColor>{fit(basename(filesCwd) || 'arquivos', width)}</Text>
+          {rows.length === 0 ? <Text dimColor>(vazio)</Text> : null}
+          {rows.map((r, i) => {
+            const marks = (r.touch ? 2 : 0) + (r.git ? 2 : 0)
+            const indent = '  '.repeat(r.depth)
+            const label = fit(`${indent}${r.kind === 'dir' ? (r.expanded ? '▾ ' : '▸ ') : '  '}${r.name}`, width - marks)
+            return (
+              <Box key={`f-row:${i}`} flexDirection="row">
+                {r.kind === 'dir' ? (
+                  <Button key={`f:${i}`} plain label={label} onPress={noop} />
+                ) : (
+                  <Text dimColor={!r.touch && !r.git}>{label}</Text>
+                )}
+                {r.touch ? <Text color={r.touch === 'write' ? 'green' : 'cyan'}>{r.touch === 'write' ? ' ●' : ' ○'}</Text> : null}
+                {r.git ? <Text color={MARK_COLOR[r.git]}>{` ${r.git}`}</Text> : null}
+              </Box>
+            )
+          })}
+          <Box key="foot" marginTop={1} flexDirection="column">
+            {toolbar}
+            <Text dimColor>{fit('○ lido  ● escrito  M A D ? git', width)}</Text>
+          </Box>
+        </Box>
+      )
+    }
+
     if (!snap) {
       return (
         <Box flexDirection="column">
+          {tabs}
           <Text color="red">{fit(error ?? 'reading the repository…', width)}</Text>
           {toolbar}
         </Box>
@@ -298,6 +423,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
+        {tabs}
         <Text bold>{fit(basename(s.worktrees[0]?.path ?? s.root), width)}</Text>
         {error ? <Text color="red">{fit(error, width)}</Text> : null}
 

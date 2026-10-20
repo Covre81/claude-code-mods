@@ -88,10 +88,12 @@ describe('git.ts parsers', () => {
 // A fake git beneath the plugin: answers $.process.run by argv, records switches and /cd runs.
 type Calls = { cd: string[]; switched: string[]; toasts: string[]; dirty: boolean }
 
-function fakeGit(on: On, calls: Calls) {
+function fakeGit(on: On, calls: Calls, extra?: (argv: string, cwd?: string) => string | undefined) {
   on('process.run', async ($, e) => {
     const argv = e.argv.join(' ')
     const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    const more = extra?.(argv, e.init?.cwd)
+    if (more !== undefined) return ok(more)
     if (argv === 'git rev-parse --show-toplevel') return ok(`${MAIN}\n`)
     if (argv === 'git worktree list --porcelain') return ok(WORKTREE_OUT)
     if (argv.startsWith('git for-each-ref')) return ok(BRANCH_OUT)
@@ -199,5 +201,45 @@ describe('on/off toggle', () => {
     const on_ = await $.command.run({ command: 'git-sidebar', args: 'on', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } })
     expect(on_.text).toContain('git-sidebar ativado.')
     expect(on_.text).toContain('worktrees')
+  })
+})
+
+describe('the Arquivos tab', () => {
+  test('lists the cwd, marks git changes and files Claude read, and expands a folder on click', async ($, on) => {
+    const calls: Calls = { cd: [], switched: [], toasts: [], dirty: false }
+    fakeGit(on, calls, (argv, cwd) => {
+      if (argv === 'git rev-parse --show-prefix') return ''
+      if (argv === 'git status --porcelain' && !cwd) return ' M src/b.ts\n?? notes.md\n'
+      return undefined
+    })
+    on('session.cwd', () => ({ value: MAIN }))
+    on('fs.list', (_$, e) => {
+      const dirs: Record<string, { name: string; kind: 'file' | 'dir' }[]> = {
+        '.': [{ name: 'src', kind: 'dir' }, { name: 'notes.md', kind: 'file' }, { name: '.git', kind: 'dir' }],
+        src: [{ name: 'b.ts', kind: 'file' }],
+      }
+      // the engine hands hooks the absolute path
+      const list = dirs[e.path?.endsWith('src') ? 'src' : '.']
+      if (!list) throw new Error('ENOENT')
+      return { value: list.map(x => ({ ...x, size: 0, mtimeMs: 0, isLink: false })) }
+    })
+    await openSidebar($)
+    const ui = await $.ui.mount({ plugin: 'git-sidebar', surface: 'terminal', component: 'Pane', requestId: 'git', props: PANE_PROPS })
+
+    await ui.press({ key: 'tab:files' })
+    await ui.redraw()
+    expect(await ui.find({ key: 'f:0' })).toBeDefined() // src
+    expect(await ui.find({ type: 'Text', text: /notes\.md/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /\.git/ })).toBeUndefined()
+
+    await $.tool.call({ tool: 'Read', file_path: `${MAIN}/notes.md` } as never).catch(() => undefined)
+    await ui.press({ key: 'f:0' })
+    await ui.redraw()
+    expect(await ui.find({ type: 'Text', text: /b\.ts/ })).toBeDefined()
+
+    await ui.press({ key: 'tab:branches' })
+    await ui.redraw()
+    expect(await ui.find({ key: 'br:1' })).toBeDefined()
+    await ui.unmount()
   })
 })
