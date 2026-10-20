@@ -19,6 +19,6 @@ Source: https://github.com/hamzafer/claude-code-mods
 ## claude-code-filetree
 
 Mod: `git-sidebar` (the Arquivos tab: tree rows, git marks and touched-file tracking)
-Source: https://github.com/kurtbuhler/claude-code-filetree @ 003545cd7692f9ac013c41c1732d65c2f3047f7e
+Source: https://github.com/data-goblin/claude-code-filetree @ 003545cd7692f9ac013c41c1732d65c2f3047f7e
 
     Copyright (c) 2026 Kurt Buhler
