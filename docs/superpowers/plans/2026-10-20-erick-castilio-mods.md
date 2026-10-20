@@ -40,11 +40,20 @@
 
 **User decision (2026-10-20):** after tests pass, new mods may be added to `CLAUDE_CODE_PLUGIN_DIRS` without asking again.
 
-- [ ] Clone into `<scratchpad>/upstream/`: `data-goblin/claude-code-filetree`, `karanb192/cache-tax`, `BayramAnnakov/claude-reflect`, `JohnnyVizz/claude-kit`.
-- [ ] `skillspector scan <each> --no-llm`; write findings + license + HEAD sha to `<scratchpad>/upstream/REPORT.md`.
-- [ ] Stop and report to the user if any license is not MIT/Apache or any finding is real.
+- [x] Clone into `<scratchpad>/upstream/`: `data-goblin/claude-code-filetree`, `karanb192/cache-tax`, `BayramAnnakov/claude-reflect`, `JohnnyVizz/claude-kit`.
+- [x] `skillspector scan <each> --no-llm`; write findings + license + HEAD sha to `<scratchpad>/upstream/REPORT.md`.
+- [x] Stop and report to the user if any license is not MIT/Apache or any finding is real.
 
 Nothing is installed or committed in this task. Upstream code is read as reference, never run.
+
+**Result (2026-10-20):** all MIT, no real findings (high scores come from test fixtures and upstream dev hooks, none copied).
+
+| Repo | HEAD sha | License | Score | Real findings |
+|---|---|---|---|---|
+| `data-goblin/claude-code-filetree` (clone origin; copyright Kurt Buhler) | `003545cd7692f9ac013c41c1732d65c2f3047f7e` | MIT | 81 CRITICAL | none |
+| `karanb192/cache-tax` | `432a08df1a22474a66b94240e2bcedaa6db55a17` | MIT | 24 MEDIUM | none |
+| `johnnyvizz/claude-kit` | `c871c153ead54ad9547cc717d0f3e5a676c73986` | MIT | 64 HIGH | none |
+| `BayramAnnakov/claude-reflect` | `b6c42326903af3dd2bf3772b979730a44d8548ca` | MIT | 100 CRITICAL | none in `mod/` |
 
 ### Task 1: `cache-frio` shows the time left before the cache goes cold
 
@@ -52,22 +61,24 @@ Nothing is installed or committed in this task. Upstream code is read as referen
 
 **Files:** `cache-frio/hooks/register.tsx`, `cache-frio/hooks/*.test.ts`
 
-- [ ] Write the failing test: a pure `minutesLeft({ idleMs })` returns `60 - idle` floored at 0; `isCold` unchanged.
-- [ ] Show in the status line (pattern of `delegation-dock`, which already uses a status line entry) `cache: 12 min` only when context > `MIN_TOKENS` and the last answer came from the main loop. Hidden when the mod is off.
-- [ ] Refresh it on a `$.clock` timer at most once a minute; no timer while idle-cold (it's already gone).
-- [ ] No money estimate: prices vary by model and jev-router mixes models. `context-monitor` already shows real session cost from `$.session.usage().cost`. ponytail: add $ only if the host starts exposing the cache-write price.
+- [x] Write the failing test: a pure `minutesLeft({ idleMs })` returns `60 - idle` floored at 0; `isCold` unchanged.
+- [x] Show in the status line (pattern of `delegation-dock`, which already uses a status line entry) `cache: 12 min` only when context > `MIN_TOKENS` and the last answer came from the main loop. Hidden when the mod is off.
+- [x] Refresh it on a `$.clock` timer at most once a minute; no timer while idle-cold (it's already gone).
+- [x] No money estimate: prices vary by model and jev-router mixes models. `context-monitor` already shows real session cost from `$.session.usage().cost`. ponytail: add $ only if the host starts exposing the cache-write price.
 - [ ] Verify: tests green; manual check that the line counts down.
 
 Commit: `feat(cache-frio): show minutes left before the prompt cache goes cold`
 
 ### Task 2: `agent-radar` shows model and tokens per subagent
 
+**Spike note:** `AgentSpawnResult.model` gives the subagent's model; `TurnStepResult.usage` gives per-step tokens (counted as input + output + cache creation; cache reads are left out because each step re-reads the same prefix). Task progress comes from `tool.call`: `TodoWrite` carries the whole list, `TaskCreate` returns the id in `result.task.id`, `TaskUpdate` carries `taskId` + `status`.
+
 **Files:** `agent-radar/hooks/register.tsx`, its test
 
-- [ ] **Spike first:** grep `agent-radar/.claude-plugin/types/index.d.ts` for what subagent events carry (`model`, `usage`). Also grep for any task/todo event (`TaskCreate`, `TodoWrite` tool calls are visible via `tool.call`). Write findings at the top of the task as a note.
-- [ ] If `model`/`usage` exist: failing test first, then append `· sonnet · 42k tok` to the subagent line. If they don't, stop this step and say so; don't estimate.
-- [ ] Progress bar (Savvy): only if `tool.call` on `TaskCreate`/`TaskUpdate` (or `TodoWrite`) gives the list and statuses. Then one line `3/7 tarefas` in the same radar band, not a new mod. Otherwise drop it.
-- [ ] Verify: `claude plugin test agent-radar`.
+- [x] **Spike first:** grep `agent-radar/.claude-plugin/types/index.d.ts` for what subagent events carry (`model`, `usage`). Also grep for any task/todo event (`TaskCreate`, `TodoWrite` tool calls are visible via `tool.call`). Write findings at the top of the task as a note.
+- [x] If `model`/`usage` exist: failing test first, then append `· sonnet · 42k tok` to the subagent line. If they don't, stop this step and say so; don't estimate.
+- [x] Progress bar (Savvy): only if `tool.call` on `TaskCreate`/`TaskUpdate` (or `TodoWrite`) gives the list and statuses. Then one line `3/7 tarefas` in the same radar band, not a new mod. Otherwise drop it.
+- [x] Verify: `claude plugin test agent-radar`.
 
 Commit: `feat(agent-radar): show each subagent's model and tokens`
 
@@ -83,10 +94,10 @@ Commit: `feat(agent-radar): show each subagent's model and tokens`
 
 **Files:** `reflexo/.claude-plugin/plugin.json`, `reflexo/tsconfig.json`, `reflexo/hooks/hooks.json`, `reflexo/hooks/register.tsx`, `reflexo/hooks/reflexo.test.ts`
 
-- [ ] Failing tests: `looksLikeRule` positives/negatives (include "não sei" → false, long prompts → false); hook never drops the prompt; nothing written when the answer is `Ignorar` or the ask is dismissed.
-- [ ] Implement; fail open (`.catch(($, e, next) => next(e))`) like `cache-frio`.
+- [x] Failing tests: `looksLikeRule` positives/negatives (include "não sei" → false, long prompts → false); hook never drops the prompt; nothing written when the answer is `Ignorar` or the ask is dismissed.
+- [x] Implement; fail open (`.catch(($, e, next) => next(e))`) like `cache-frio`.
 - [ ] Verify tests + tsc; manual: type "nunca use sed no Windows", confirm the ask, confirm the line in a scratch CLAUDE.md (use a test project, not the real one).
-- [ ] Ask the user before adding it to `CLAUDE_CODE_PLUGIN_DIRS`.
+- [x] Ask the user before adding it to `CLAUDE_CODE_PLUGIN_DIRS`.
 
 Commits: `feat(reflexo): offer to save a correction as a CLAUDE.md rule`, then `docs(readme): list reflexo`
 
@@ -96,21 +107,30 @@ Commits: `feat(reflexo): offer to save a correction as a CLAUDE.md rule`, then `
 
 **Files:** `git-sidebar/hooks/register.tsx` (+ a new `git-sidebar/hooks/filetree.ts` for the pure parts if register.tsx would pass ~500 lines), their tests
 
-- [ ] Read upstream `<scratchpad>/upstream/claude-code-filetree` as reference only.
-- [ ] Add a tab switch to the existing pane: `Branches` (today's view, unchanged) and `Arquivos`.
-- [ ] `Arquivos`: tree of the session cwd (collapsed dirs, skip `.git`/`node_modules`), files read/written this session marked (from `tool.call` on `Read`/`Edit`/`Write`), git status marks from `git status --porcelain` via `$.process` (git only, like `guarda`).
-- [ ] Failing tests first for the pure parts: paths -> tree rows, porcelain -> marks, touched-set from tool calls.
-- [ ] Credit in `THIRD_PARTY_NOTICES.md` (separate commit, root dir).
-- [ ] Verify: `claude plugin test git-sidebar`, tsc.
+- [x] Read upstream `<scratchpad>/upstream/claude-code-filetree` as reference only.
+- [x] Add a tab switch to the existing pane: `Branches` (today's view, unchanged) and `Arquivos`.
+- [x] `Arquivos`: tree of the session cwd (collapsed dirs, skip `.git`/`node_modules`), files read/written this session marked (from `tool.call` on `Read`/`Edit`/`Write`), git status marks from `git status --porcelain` via `$.process` (git only, like `guarda`).
+- [x] Failing tests first for the pure parts: paths -> tree rows, porcelain -> marks, touched-set from tool calls.
+- [x] Credit in `THIRD_PARTY_NOTICES.md` (separate commit, root dir).
+- [x] Verify: `claude plugin test git-sidebar`, tsc.
 
 Commits: `feat(git-sidebar): add a files tab marking what Claude read and wrote`, then `docs: credit claude-code-filetree`
+
+**Kept beyond the plan (2026-10-20 review):** the merge/conflict mark ordering (`mergeMark`/`RANK`) and per-cwd touched sets (`touchedByCwd`). Both are small, tested, and stop marks from leaking between sessions in different folders.
 
 ### Task 5: Spike — `/keepwarm` (no code promised)
 
 Keeping the cache warm is cheap in theory (a cache read ≈ 0.1× vs a 1h write ≈ 2×), but two things are unverified:
-- [ ] Does the mod API let a mod send a model request on its own? Read cache-tax's source to see which `$` call it uses.
-- [ ] Would jev-router route a tiny keepalive to `gpt-oss:20b-cloud` (which warms nothing on Anthropic's side)? Read ai-memory `decisions/jev-router-operating-decisions.md` (project `JEV-APP-PC`).
-- [ ] Report to the user with a go/no-go. Implementation becomes its own plan only on go.
+- [x] Does the mod API let a mod send a model request on its own? Read cache-tax's source to see which `$` call it uses.
+- [x] Would jev-router route a tiny keepalive to `gpt-oss:20b-cloud` (which warms nothing on Anthropic's side)? Read ai-memory `decisions/jev-router-operating-decisions.md` (project `JEV-APP-PC`).
+- [x] Report to the user with a go/no-go. Implementation becomes its own plan only on go.
+
+**Findings (2026-10-20):**
+- API: yes. [CONFIRMADO] `$.model.fork({ prompt })` re-sends the main thread's last request (same model, system, tools, messages) plus one prompt, so the prefix is served from cache. cache-tax uses exactly this (`hooks/register.ts:301`).
+- Router: [CONFIRMADO] jev-router is sticky per conversation and scores each new human turn. [INFERIDO] a fork has the same prefix, so it probably stays on the conversation's provider; on a conversation already routed to `gpt-oss:20b-cloud` it warms nothing. Not verified in telemetry.
+- Cost: every ping is a cache read of the whole context (≈0.1× of it, e.g. 180k tokens per ping), paid on every idle session, including ones you never come back to.
+
+**Verdict: no-go for now.** `cache-frio` already warns before the cache goes cold, at zero cost. Revisit only if the user asks, and first check in `~/.jev-router/telemetry.db` that fork requests land on Anthropic.
 
 ### Task 6: Test You Should Know (one line)
 
