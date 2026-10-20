@@ -68,9 +68,17 @@ async function appendRule($: EngineInterface, path: string, rule: string): Promi
     if (e?.code === 'ENOENT' || /ENOENT/.test(e?.message ?? '')) return ''
     throw err
   })
-  const hasHeading = current.split('\n').some(l => l.trim() === HEADING)
+  const lines = current.split('\n')
+  const at = lines.findIndex(l => l.trim() === HEADING)
+  let end = at === -1 ? -1 : lines.findIndex((l, i) => i > at && /^#{1,6}\s/.test(l))
+  if (end !== -1) {
+    // Another section follows: insert after the section's last non-blank line, keep every other line as is.
+    while (end > at + 1 && lines[end - 1]!.trim() === '') end--
+    const cr = lines[at]!.endsWith('\r') ? '\r' : ''
+    lines.splice(end, 0, `- ${rule}${cr}`)
+    return $.fs.write(path, lines.join('\n'))
+  }
   const eol = current === '' || current.endsWith('\n') ? '' : '\n'
-  // ponytail: with the heading present the line goes at end of file, not under the heading; fine for a trailing section.
-  const head = hasHeading ? '' : `${current === '' ? '' : '\n'}${HEADING}\n`
+  const head = at !== -1 ? '' : `${current === '' ? '' : '\n'}${HEADING}\n`
   await $.fs.write(path, `${current}${eol}${head}- ${rule}\n`)
 }

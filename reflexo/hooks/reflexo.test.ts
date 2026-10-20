@@ -128,6 +128,14 @@ describe('reflexo hooks', () => {
     expect(seen.written[0]!.text).toBe('## Regras capturadas\n- antiga\n- nunca use var\n')
   })
 
+  test('heading followed by another section: the line goes under the heading', async ($, on) => {
+    const existing = '## Regras capturadas\n- antiga\n\n## Outra\ntexto\n'
+    const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', existing })
+    await $.prompt.submit(submit('nunca use var'))
+    await $.turn.complete(answered)
+    expect(seen.written[0]!.text).toBe('## Regras capturadas\n- antiga\n- nunca use var\n\n## Outra\ntexto\n')
+  })
+
   test('a non-ENOENT read error writes nothing (no overwrite of CLAUDE.md)', async ($, on) => {
     const seen = stub(on, { answer: 'Projeto (CLAUDE.md)', readError: 'EACCES: permission denied' })
     await $.prompt.submit(submit('nunca use var'))
