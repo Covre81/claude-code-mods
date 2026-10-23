@@ -140,8 +140,8 @@ async function stagedDirs($: EngineInterface, target: CommitTarget, cwd: string)
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    // Published so the meus-mods panel reads the state, never a copied default (the toggle is per session).
-    await update($, isEnabledRef, () => isEnabledRef.initial)
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     await $.command.register({
       name: 'commit-guard',
       description: 'Liga/desliga a validação de escopo único, Conventional Commits e Co-Authored-By.',
@@ -153,8 +153,10 @@ export const register: Register = on => {
   on('command.run', { command: 'commit-guard' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
     if (arg !== 'on' && arg !== 'off') return { text: 'Uso: /commit-guard on|off' }
-    await update($, isEnabledRef, () => arg === 'on')
-    return { text: `atomic-commit-guard ${arg === 'on' ? 'ativado' : 'desativado'}.` }
+    const nextState = arg === 'on'
+    await update($, isEnabledRef, () => nextState)
+    await $.store.set('isEnabled', nextState)
+    return { text: `atomic-commit-guard ${nextState ? 'ativado' : 'desativado'}.` }
   })
 
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
