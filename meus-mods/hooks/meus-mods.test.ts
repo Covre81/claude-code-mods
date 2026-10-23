@@ -69,9 +69,24 @@ test('mods aparecem em ordem alfabética', async ($, on) => {
 })
 
 // O estado vem do que o clean-view publica no session.start; o painel não
-// conhece o default de ninguém: sem publicação (o mod não carregou), desligado.
+// conhece o default de ninguém. Sem publicação (o mod ainda não iniciou ou não
+// carregou) o toggle fica cinza — nem verde, nem vermelho — e não conta como ativo.
+const TRACK = { true: '#2ecc71', false: '#ff5252', undefined: '#5c6370' } as const
+
+// find() ignora backgroundColor; a cor do toggle só aparece varrendo a árvore desenhada.
+async function backgrounds(mounted: { drawn(): Promise<unknown> }): Promise<string[]> {
+  const found: string[] = []
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return
+    const { props, children } = node as { props?: { backgroundColor?: unknown }; children?: unknown[] }
+    if (typeof props?.backgroundColor === 'string') found.push(props.backgroundColor)
+    for (const child of children ?? []) walk(child)
+  }
+  walk(await mounted.drawn())
+  return found
+}
 for (const [value, expected] of [[undefined, '0 de 1 mods ativos'], [false, '0 de 1 mods ativos'], [true, '1 de 1 mods ativos']] as const) {
-  test(`clean-view com estado ${value} aparece como "${expected}"`, async ($, on) => {
+  test(`clean-view com estado ${value} aparece como "${expected}" e na cor certa`, async ($, on) => {
     on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
     on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)
     on('state.get', { plugin: 'clean-view' }, () => ({ value: { value, version: 1 } }) as never)
@@ -80,5 +95,35 @@ for (const [value, expected] of [[undefined, '0 de 1 mods ativos'], [false, '0 d
     const mounted = await $.ui.mount({ plugin: 'meus-mods', surface: 'terminal', component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
 
     expect(await mounted.find({ type: 'Text', text: expected })).toBeDefined()
+    const colors = await backgrounds(mounted)
+    for (const [state, color] of Object.entries(TRACK)) expect(colors.includes(color)).toBe(state === String(value))
   })
 }
+
+// Regressão: sessão nova com o painel aberto antes de os mods publicarem o
+// estado mostrava todos vermelhos (desligados), como se o usuário os tivesse desligado.
+test('mods sem estado publicado não aparecem vermelhos', async ($, on) => {
+  on('env.get', () => ({ value: 'C:/m/agent-radar;C:/m/reflexo;C:/m/atomic-commit-guard' }) as never)
+  on('fs.read', (_$, e) => ({ value: JSON.stringify({ name: (e as { path: string }).path.replace(/\\/g, '/').split('/')[2] }) }) as never)
+  register(on, {})
+
+  const mounted = await $.ui.mount({ plugin: 'meus-mods', surface: 'terminal', component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
+
+  const colors = await backgrounds(mounted)
+  expect(colors.includes(TRACK.false)).toBe(false)
+  expect(colors.filter(c => c === TRACK.undefined).length).toBe(3)
+  expect(await mounted.find({ type: 'Text', text: 'reflexo' })).toBeDefined()
+  expect(await mounted.find({ type: 'Text', text: '0 de 3 mods ativos' })).toBeDefined()
+})
+
+test('reflexo tem toggle e publica o estado no painel', async ($, on) => {
+  on('env.get', () => ({ value: 'C:/m/reflexo' }) as never)
+  on('fs.read', () => ({ value: JSON.stringify({ name: 'reflexo' }) }) as never)
+  on('state.get', { plugin: 'reflexo' }, () => ({ value: { value: true, version: 1 } }) as never)
+  register(on, {})
+
+  const mounted = await $.ui.mount({ plugin: 'meus-mods', surface: 'terminal', component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
+
+  expect((await backgrounds(mounted)).includes(TRACK.true)).toBe(true)
+  expect(await mounted.find({ type: 'Text', text: '1 de 1 mods ativos' })).toBeDefined()
+})

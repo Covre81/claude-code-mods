@@ -6,6 +6,9 @@ const BG = '#11141c'
 const BG_ALT = '#171b26'
 const TOGGLE_ON = '#2ecc71'
 const TOGGLE_OFF = '#ff5252'
+// Estado ainda não publicado (o mod não terminou o session.start ou não
+// carregou): nem ligado nem desligado, então nem verde nem vermelho.
+const TOGGLE_PENDING = '#5c6370'
 const TOGGLE_KNOB = '#f4f4f4'
 // Blocos de cor de fundo, sem glifo nenhum: funciona em qualquer fonte, de
 // qualquer superfície (terminal, desktop, vscode, mobile). A versão anterior
@@ -35,9 +38,10 @@ const phaseTrackerRef = { plugin: 'phase-tracker', key: 'isEnabled' } as const
 const sessionTelemetryRef = { plugin: 'session-telemetry', key: 'isEnabled' } as const
 const agentRadarRef = { plugin: 'agent-radar', key: 'isEnabled' } as const
 const atomicCommitGuardRef = { plugin: 'atomic-commit-guard', key: 'isEnabled' } as const
+const reflexoRef = { plugin: 'reflexo', key: 'isEnabled' } as const
 
 async function enabledStates($: EngineInterface): Promise<Record<string, boolean | undefined>> {
-  const [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p] = await Promise.all([
+  const [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q] = await Promise.all([
     $.state.get(cleanViewRef),
     $.state.get(cacheFrioRef),
     $.state.get(delegationDockRef),
@@ -54,10 +58,12 @@ async function enabledStates($: EngineInterface): Promise<Record<string, boolean
     $.state.get(sessionTelemetryRef),
     $.state.get(agentRadarRef),
     $.state.get(atomicCommitGuardRef),
+    $.state.get(reflexoRef),
   ])
   return {
     // Nenhum default copiado aqui: todo mod publica o próprio estado no
-    // session.start; sem publicação (o mod não carregou), rows mostra desligado.
+    // session.start; sem publicação (ainda iniciando ou não carregou), rows
+    // devolve undefined e o toggle fica cinza.
     'clean-view': a.value,
     'cache-frio': b.value,
     'delegation-dock': c.value,
@@ -74,6 +80,7 @@ async function enabledStates($: EngineInterface): Promise<Record<string, boolean
     'session-telemetry': n.value,
     'agent-radar': o.value,
     'atomic-commit-guard': p.value,
+    reflexo: q.value,
   }
 }
 
@@ -83,7 +90,8 @@ type Row = {
   accent: string
   name: string
   description: string
-  isEnabled: boolean | null // null = sempre ativo, sem toggle
+  // true/false = publicado; undefined = ainda não publicado (cinza); null = sempre ativo, sem toggle
+  isEnabled: boolean | undefined | null
   isFeature?: boolean // recurso dentro de um mod: aparece, mas não conta como mod
 }
 
@@ -108,9 +116,10 @@ const META: Record<string, Meta> = {
   'session-time-machine': { icon: '⏱', accent: '#58a6ff', description: 'Linha do tempo da sessão; bifurca a partir de qualquer ponto', command: 'timemachine' },
   'phase-tracker': { icon: '🎯', accent: '#4aa3df', description: 'Fases da tarefa guiadas pelo método Karpathy', command: 'fase' },
   'session-telemetry': { icon: '🕒', accent: '#f08a5d', description: 'Hora nas respostas e aviso de troca de modelo', command: 'telemetria' },
-  // radar-toggle ignora o argumento e inverte o estado; o painel sempre manda o oposto do atual, então dá no mesmo
+  // radar-toggle aceita on|off (e sem argumento inverte); o painel sempre manda o oposto do atual
   'agent-radar': { icon: '📡', accent: '#e06c75', description: 'Faixa com o que cada subagente está fazendo', command: 'radar-toggle' },
   'atomic-commit-guard': { icon: '⚛', accent: '#d19a66', description: 'Barra commit que mistura escopos ou tem mensagem ruim', command: 'commit-guard' },
+  reflexo: { icon: '🪞', accent: '#e0c84a', description: 'Transforma orientações em regras permanentes no CLAUDE.md' },
   'meus-mods': { icon: '✦', accent: BRAND, description: 'Este painel', command: null },
   guarda: { icon: '🛡', accent: '#e0c84a', description: 'Segura comando destrutivo e pede confirmação', command: null },
   cofre: { icon: '🔐', accent: '#5fd98a', description: 'Mantém chave de API fora da conversa', command: null },
@@ -152,14 +161,14 @@ async function rows($: EngineInterface): Promise<Row[]> {
       // Convenção dos mods daqui: o toggle tem o nome do próprio mod.
       const hasToggle = name in states && meta?.command !== null
       const command = hasToggle ? (meta?.command ?? name) : null
-      const isEnabled = hasToggle ? (states[name] ?? false) : null
+      const isEnabled = hasToggle ? states[name] : null
       return { command, name, isEnabled, icon: meta?.icon ?? GENERIC.icon, accent: meta?.accent ?? GENERIC.accent, description: meta?.description ?? description }
     }),
   )
 
   const extras: Row[] = []
   if (mods.some(m => m.name === 'context-monitor')) {
-    const { value: memoria = false } = await $.state.get(memoriaRef)
+    const { value: memoria } = await $.state.get(memoriaRef)
     extras.push({ command: 'memoria', icon: '🧠', accent: '#9b8cf0', name: 'memoria', description: 'Busca notas do ai-memory antes de cada prompt (recurso do context-monitor)', isEnabled: memoria, isFeature: true })
   }
 
@@ -209,11 +218,12 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANEL_ID }, async ($, e) => {
     const list = await rows($)
     const mods = list.filter(r => !r.isFeature)
-    const active = mods.filter(r => r.isEnabled !== false).length
+    // Ativo = ligado ou sempre ativo; o que ainda não publicou estado não conta.
+    const active = mods.filter(r => r.isEnabled === true || r.isEnabled === null).length
     const { Box, Text, Button } = $.ui.resolve(e)
 
     const toggle = (row: Row) => {
-      if (!row.command) return
+      if (!row.command || row.isEnabled === undefined) return
       void $.command.run({ command: row.command, args: row.isEnabled ? 'off' : 'on' })
     }
 
@@ -222,6 +232,15 @@ export const register: Register = on => {
     // verdade e não aceita lista de elementos como filho; array quebrava o
     // render e o toggle inteiro desaparecia.
     const Toggle = (row: Row) => {
+      // Sem estado publicado não há o que inverter: pílula cinza, sem bolinha
+      // e sem botão, para não mandar on/off às cegas.
+      if (row.isEnabled === undefined) {
+        return (
+          <Text key={`${row.name}-toggle`} backgroundColor={TOGGLE_PENDING}>
+            {TOGGLE_FILL + TOGGLE_KNOB_BLOCK}
+          </Text>
+        )
+      }
       const track = row.isEnabled ? TOGGLE_ON : TOGGLE_OFF
       return (
         <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
