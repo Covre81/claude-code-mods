@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { EMPTY_AGY, delegateOf, dockText, isRedirected } from './register'
+import { EMPTY_AGY, delegateOf, dockText, isRedirected, jobLabel } from './register'
 
 describe('delegateOf', () => {
   test('names the three delegates and nothing else', () => {
@@ -56,6 +56,7 @@ test('foreground agy with empty stdout warns the model; with text it passes clea
 
 test('background agy: stays in the dock until its notification, then an empty output file warns', async ($, on) => {
   const statuses: (string | undefined)[] = []
+  const toasts: string[] = []
   on('tool.call', () =>
     ({ result: { stdout: 'Command running in background with ID: b1. Output is being written to: C:\\t\\b1.output. You will be notified', stderr: '', interrupted: false, backgroundTaskId: 'b1' } }) as never,
   )
@@ -64,7 +65,10 @@ test('background agy: stays in the dock until its notification, then an empty ou
     return { value: undefined } as never
   })
   on('clock.every', () => ({ value: { cancel() {} } }) as never)
-  on('ui.toast', () => ({ value: undefined }) as never)
+  on('ui.toast', (_$, e) => {
+    toasts.push((e as { text: string }).text)
+    return { value: undefined } as never
+  })
   let read = ''
   on('fs.read', (_$, e) => {
     read = String((e as { path: string }).path)
@@ -83,4 +87,50 @@ test('background agy: stays in the dock until its notification, then an empty ou
   expect(read).toBe('C:\\t\\b1.output')
   expect(context).toEqual([EMPTY_AGY])
   expect(statuses.at(-1)).toBe(undefined)
+  expect(toasts).toEqual(['agy devolveu vazio'])
+})
+
+describe('jobLabel', () => {
+  test('first meaningful token, skipping cd, env vars and runners', () => {
+    expect(jobLabel('cd /c/Dev/CanalMengãoAbroad && npx remotion render Short out.mp4')).toBe('remotion')
+    expect(jobLabel('PYTHONUTF8=1 uv run python tts.py --voice x')).toBe('tts.py')
+    expect(jobLabel('python -I scripts/get_transcript.py abc')).toBe('get_transcript.py')
+    expect(jobLabel('node C:/x/build.mjs')).toBe('build.mjs')
+    expect(jobLabel('npm test')).toBe('npm')
+    expect(jobLabel('')).toBe('comando')
+  })
+})
+
+test('any background command: dock while running, toast on its notification', async ($, on) => {
+  const statuses: (string | undefined)[] = []
+  const toasts: string[] = []
+  on('tool.call', () => ({ result: { stdout: 'Command running in background with ID: b2.', stderr: '', interrupted: false, backgroundTaskId: 'b2' } }) as never)
+  on('ui.status', (_$, e) => {
+    statuses.push((e as { text?: string }).text)
+    return { value: undefined } as never
+  })
+  on('clock.every', () => ({ value: { cancel() {} } }) as never)
+  on('ui.toast', (_$, e) => {
+    toasts.push((e as { text: string }).text)
+    return { value: undefined } as never
+  })
+  on('prompt.submit', () => ({ text: '' }) as never)
+
+  await $.tool.call(bash('npx remotion render Short out.mp4', { run_in_background: true }) as never)
+  expect(statuses.at(-1)).toContain('remotion')
+
+  await $.prompt.submit({ text: '<task-notification><task-id>b2</task-id><status>failed</status></task-notification>', wait: false, origin: { kind: 'task-notification' } } as never)
+  expect(toasts).toEqual(['❌ remotion falhou'])
+  expect(statuses.at(-1)).toBe(undefined)
+})
+
+test('a foreground non-delegate command never enters the dock', async ($, on) => {
+  const statuses: (string | undefined)[] = []
+  on('tool.call', () => ({ result: { stdout: 'ok', stderr: '', interrupted: false } }) as never)
+  on('ui.status', (_$, e) => {
+    statuses.push((e as { text?: string }).text)
+    return { value: undefined } as never
+  })
+  await $.tool.call(bash('npm test') as never)
+  expect(statuses.length).toBe(0)
 })
