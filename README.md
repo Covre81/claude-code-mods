@@ -11,6 +11,7 @@ Function-hook mods for [Claude Code](https://claude.com/claude-code): shell safe
 | `guarda` | Intercepts risky Bash commands (`rm -rf`, `git reset --hard`, force push, new dependencies) and asks for confirmation explaining the impact. |
 | `lixeira` | Sends `rm` / `Remove-Item` targets to the Windows Recycle Bin instead of deleting them permanently. |
 | `cofre` | Keeps API keys out of the conversation: `/chave` stores them in `.env`, secret file reads display only variable names, outputs are masked, and pasted keys are quarantined. |
+| `colisao` | Asks before editing a file that another Claude session wrote in the last 30 minutes. |
 | `atomic-commit-guard` | Blocks commits that mix top-level directories, violate Conventional Commits, or lack a `Co-Authored-By` trailer. |
 | `universal-audit-log` | A hook on `*` that logs every event (tool calls, prompts, turns, fs/http/process calls from other plugins) with secret redaction. |
 
