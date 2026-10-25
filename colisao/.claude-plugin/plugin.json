@@ -1,0 +1,9 @@
+{
+  "name": "colisao",
+  "version": "0.1.0",
+  "description": "Asks before editing a file that another Claude session wrote in the last 30 minutes",
+  "author": {
+    "name": "Bruno Covre"
+  },
+  "types": "./types/index.d.ts"
+}
