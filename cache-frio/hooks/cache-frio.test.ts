@@ -29,7 +29,7 @@ type Stubs = { now: number[]; tokens: number; answer?: string; askThrows?: boole
 
 /** Core stubs: the clock walks through `now`, usage reports `tokens`, AskUserQuestion answers `answer`. */
 function stub(on: On, s: Stubs) {
-  const seen = { asked: [] as string[], filled: [] as string[], sent: [] as string[], status: [] as string[] }
+  const seen = { asked: [] as string[], filled: [] as string[], sent: [] as string[], status: [] as string[], toasts: [] as string[] }
   on('clock.now', () => ({ value: s.now.shift() }) as never)
   on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: s.tokens, window: 1_000_000 }, rateLimits: [] } }) as never)
   on('ui.status', (_, e) => {
@@ -52,6 +52,10 @@ function stub(on: On, s: Stubs) {
     return { text: (e as { text: string }).text } as never
   })
   on('turn.complete', () => ({ text: '' }) as never)
+  on('ui.toast', (_, e) => {
+    seen.toasts.push((e as { text: string }).text)
+    return { value: undefined } as never
+  })
   return seen
 }
 
@@ -133,5 +137,30 @@ describe('prompt.submit', () => {
     await $.turn.complete(answered)
     const r = (await $.prompt.submit(submit('oi'))) as { text?: string }
     expect(r.text).toBe('oi')
+  })
+
+  test('toast fires once when 5 min or less are left', async ($, on) => {
+    // turn.complete reads now twice (lastAnswerAt, refresh); each extra refresh reads once
+    on('store.set', () => ({ value: undefined }) as never)
+    const seen = stub(on, { now: [0, 56 * 60_000, 57 * 60_000], tokens: 180_000 })
+    await $.turn.complete(answered)
+    expect(seen.toasts.length).toBe(1)
+    expect(seen.toasts[0]!.includes('4 min')).toBe(true)
+    expect(seen.toasts[0]!.includes('180 mil')).toBe(true)
+    await $.command.run({ command: 'cache-frio', args: 'on', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 200 } } as never)
+    expect(seen.toasts.length).toBe(1)
+  })
+
+  test('no toast with more than 5 min left', async ($, on) => {
+    const seen = stub(on, { now: [0, 50 * 60_000], tokens: 180_000 })
+    await $.turn.complete(answered)
+    expect(seen.toasts.length).toBe(0)
+  })
+
+  test('a new answer re-arms the toast', async ($, on) => {
+    const seen = stub(on, { now: [0, 56 * 60_000, 100 * 60_000, 156 * 60_000], tokens: 180_000 })
+    await $.turn.complete(answered)
+    await $.turn.complete(answered)
+    expect(seen.toasts.length).toBe(2)
   })
 })
