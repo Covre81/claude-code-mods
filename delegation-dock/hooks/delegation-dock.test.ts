@@ -96,6 +96,7 @@ describe('jobLabel', () => {
     expect(jobLabel('PYTHONUTF8=1 uv run python tts.py --voice x')).toBe('tts.py')
     expect(jobLabel('python -I scripts/get_transcript.py abc')).toBe('get_transcript.py')
     expect(jobLabel('node C:/x/build.mjs')).toBe('build.mjs')
+    expect(jobLabel(String.raw`node C:\x\build.mjs`)).toBe('build.mjs')
     expect(jobLabel('npm test')).toBe('npm')
     expect(jobLabel('')).toBe('comando')
   })

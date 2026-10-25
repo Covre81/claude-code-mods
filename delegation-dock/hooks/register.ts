@@ -20,7 +20,7 @@ const RUNNERS = new Set(['npx', 'uv', 'run', 'python', 'python3', 'py', 'node', 
 export function jobLabel(command: string): string {
   const segment = command.split(/&&|;/).map(s => s.trim()).filter(s => s && !/^cd\s/.test(s)).at(-1) ?? ''
   const token = segment.split(/\s+/).find(t => t && !/^\w+=/.test(t) && !RUNNERS.has(t))
-  return token ? token.replace(/^["']|["']$/g, '').split(/[\/]/).at(-1)! : 'comando'
+  return token ? token.replace(/^["']|["']$/g, '').split(/[\\/]/).at(-1)! : 'comando'
 }
 
 /** stdout sent to a file (`> out.txt`): an empty task output then says nothing about agy. */
