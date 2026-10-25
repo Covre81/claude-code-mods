@@ -39,9 +39,10 @@ const sessionTelemetryRef = { plugin: 'session-telemetry', key: 'isEnabled' } as
 const agentRadarRef = { plugin: 'agent-radar', key: 'isEnabled' } as const
 const atomicCommitGuardRef = { plugin: 'atomic-commit-guard', key: 'isEnabled' } as const
 const reflexoRef = { plugin: 'reflexo', key: 'isEnabled' } as const
+const colisaoRef = { plugin: 'colisao', key: 'isEnabled' } as const
 
 async function enabledStates($: EngineInterface): Promise<Record<string, boolean | undefined>> {
-  const [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q] = await Promise.all([
+  const [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r] = await Promise.all([
     $.state.get(cleanViewRef),
     $.state.get(cacheFrioRef),
     $.state.get(delegationDockRef),
@@ -59,6 +60,7 @@ async function enabledStates($: EngineInterface): Promise<Record<string, boolean
     $.state.get(agentRadarRef),
     $.state.get(atomicCommitGuardRef),
     $.state.get(reflexoRef),
+    $.state.get(colisaoRef),
   ])
   return {
     // Nenhum default copiado aqui: todo mod publica o próprio estado no
@@ -81,6 +83,7 @@ async function enabledStates($: EngineInterface): Promise<Record<string, boolean
     'agent-radar': o.value,
     'atomic-commit-guard': p.value,
     reflexo: q.value,
+    colisao: r.value,
   }
 }
 
@@ -123,6 +126,7 @@ const META: Record<string, Meta> = {
   'meus-mods': { icon: '✦', accent: BRAND, description: 'Este painel', command: null },
   guarda: { icon: '🛡', accent: '#e0c84a', description: 'Segura comando destrutivo e pede confirmação', command: null },
   cofre: { icon: '🔐', accent: '#5fd98a', description: 'Mantém chave de API fora da conversa', command: null },
+  colisao: { icon: '💥', accent: '#e06c75', description: 'Pergunta antes de editar arquivo que outra sessão mexeu há pouco' },
   lixeira: { icon: '🗑', accent: '#8a8f99', description: 'Manda rm para a Lixeira do Windows', command: null },
 }
 
