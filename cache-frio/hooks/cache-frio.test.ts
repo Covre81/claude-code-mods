@@ -157,6 +157,14 @@ describe('prompt.submit', () => {
     expect(seen.toasts.length).toBe(0)
   })
 
+  test('boundary: toast at exactly 5 min left, none at 6', async ($, on) => {
+    const at5 = stub(on, { now: [0, 55 * 60_000, 0, 54 * 60_000], tokens: 180_000 })
+    await $.turn.complete(answered)
+    expect(at5.toasts).toEqual(['Cache esfria em 5 min: 180 mil tokens a reler. Mande o próximo prompt agora ou /compact.'])
+    await $.turn.complete(answered)
+    expect(at5.toasts.length).toBe(1)
+  })
+
   test('a new answer re-arms the toast', async ($, on) => {
     const seen = stub(on, { now: [0, 56 * 60_000, 100 * 60_000, 156 * 60_000], tokens: 180_000 })
     await $.turn.complete(answered)
