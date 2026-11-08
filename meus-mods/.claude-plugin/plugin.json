@@ -4,21 +4,5 @@
   "description": "Central mods hub: quick-access bar above the prompt and /mods command displaying mod status.",
   "author": {
     "name": "Bruno Covre"
-  },
-  "dependencies": [
-    "clean-view",
-    "cache-frio",
-    "delegation-dock",
-    "context-monitor",
-    "wait-quiz",
-    "next-prompts",
-    "webfetch-cache",
-    "universal-audit-log",
-    "git-sidebar",
-    "turn-inspector",
-    "agent-flow",
-    "session-time-machine",
-    "phase-tracker",
-    "session-telemetry"
-  ]
+  }
 }
