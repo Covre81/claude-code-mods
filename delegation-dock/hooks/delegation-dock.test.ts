@@ -58,7 +58,7 @@ test('background agy: stays in the dock until its notification, then an empty ou
   const statuses: (string | undefined)[] = []
   const toasts: string[] = []
   on('tool.call', () =>
-    ({ result: { stdout: 'Command running in background with ID: b1. Output is being written to: C:\\t\\b1.output. You will be notified', stderr: '', interrupted: false, backgroundTaskId: 'b1' } }) as never,
+    ({ result: { stdout: 'Command running in background with ID: b1. Output is being written to: /tmp/t/b1.output. You will be notified', stderr: '', interrupted: false, backgroundTaskId: 'b1' } }) as never,
   )
   on('ui.status', (_$, e) => {
     statuses.push((e as { text?: string }).text)
@@ -84,7 +84,7 @@ test('background agy: stays in the dock until its notification, then an empty ou
   expect(statuses.at(-1)).toContain('agy')
 
   await $.prompt.submit({ text: '<task-notification><task-id>b1</task-id><status>completed</status></task-notification>', wait: false, origin: { kind: 'task-notification' } } as never)
-  expect(read).toBe('C:\\t\\b1.output')
+  expect(read).toBe('/tmp/t/b1.output')
   expect(context).toEqual([EMPTY_AGY])
   expect(statuses.at(-1)).toBe(undefined)
   expect(toasts).toEqual(['agy devolveu vazio'])
