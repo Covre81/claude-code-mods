@@ -27,7 +27,9 @@ export function hasDelete(command: string, shell: Shell): boolean {
 export function rewrite(command: string, shell: Shell, hooks: string): string {
   // A shadow that fails to load (moved, ExecutionPolicy) stops the line instead of letting the real Remove-Item run.
   if (shell === 'powershell') return `try { . '${hooks}/remove-item.ps1' } catch { throw 'lixeira: a sombra nao carregou; nada foi apagado' }; ${command}`
-  return `rm() { powershell.exe -NoProfile -NonInteractive -File '${hooks}/lixeira.ps1' "$@"; }; ${command}`
+  // Windows (Git Bash): the PowerShell shadow sends to the Recycle Bin. Elsewhere: lixeira.sh, gio trash.
+  if (/^[A-Za-z]:/.test(hooks)) return `rm() { powershell.exe -NoProfile -NonInteractive -File '${hooks}/lixeira.ps1' "$@"; }; ${command}`
+  return `rm() { sh '${hooks}/lixeira.sh' "$@"; }; ${command}`
 }
 
 export const register: Register = on => {
