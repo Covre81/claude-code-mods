@@ -150,3 +150,12 @@ test('prompt.compose appends the section once', async ($, on) => {
   const res = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
   expect(res.sections.map(s => s.id)).toEqual(['intro', 'painel:justificar'])
 })
+
+// Regressão: /monitor off desligava o painel mas o texto continuava em todo prompt.
+test('prompt.compose leaves the section out while /monitor is off', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'hi', scope: 'shared' }] }) as never)
+  on('store.set', () => ({ value: undefined }) as never)
+  await $.command.run({ command: 'monitor', args: 'off', origin: { kind: 'composer' }, presentation: 'text' } as never)
+  const res = await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
+  expect(res.sections.map(s => s.id)).toEqual(['intro'])
+})
