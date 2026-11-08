@@ -135,3 +135,9 @@ test('a foreground non-delegate command never enters the dock', async ($, on) =>
   await $.tool.call(bash('npm test') as never)
   expect(statuses.length).toBe(0)
 })
+
+// Regressão: o conselho citava gemini-3.1-pro-high, que saiu do agy em 2026-10-20; o modelo repetia o comando quebrado.
+test('the empty-output advice names a model agy still serves', () => {
+  expect(EMPTY_AGY).toContain('--model "Gemini 4 Argon (High)"')
+  expect(EMPTY_AGY).not.toContain('gemini-3.1-pro-high')
+})

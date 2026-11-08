@@ -28,7 +28,7 @@ export const isRedirected = (command: string) => /(^|[^2&>])>>?\s*[^&\s]/.test(c
 
 export const EMPTY_AGY =
   'delegation-dock: agy terminou com saída VAZIA (exit 0). É a falha silenciosa conhecida do `agy -p` (CLAUDE.md, 2026-10-06): ' +
-  'não trate como resposta. Remonte como bundle via stdin, sem -p: `agy --mode plan --model gemini-3.1-pro-high --print-timeout 540s < bundle.txt`.'
+  'não trate como resposta. Remonte como bundle via stdin, sem -p: `agy --mode plan --model "Gemini 4 Argon (High)" --print-timeout 540s < bundle.txt`.'
 
 export function dockText(jobs: Iterable<Job>, now: number): string | undefined {
   const parts = [...jobs].map(j => `${j.tool} ${Math.round((now - j.startedAt) / 1000)}s`)
