@@ -238,6 +238,16 @@ export const register: Register = on => {
     const Toggle = (row: Row) => {
       // Sem estado publicado não há o que inverter: pílula cinza, sem bolinha
       // e sem botão, para não mandar on/off às cegas.
+      // Fora do terminal o Button é nativo do host e ignora backgroundColor dos
+      // filhos; a pílula vira trilho e bolinha desenhados com a cor da letra.
+      if (e.surface !== 'terminal') {
+        if (row.isEnabled === undefined) return <Text key={`${row.name}-toggle`} color={TOGGLE_PENDING}>━●━</Text>
+        return (
+          <Button key={`${row.name}-toggle`} plain onPress={() => toggle(row)}>
+            <Text color={row.isEnabled ? TOGGLE_ON : TOGGLE_OFF}>{row.isEnabled ? '━━●' : '●━━'}</Text>
+          </Button>
+        )
+      }
       if (row.isEnabled === undefined) {
         return (
           <Text key={`${row.name}-toggle`} backgroundColor={TOGGLE_PENDING}>

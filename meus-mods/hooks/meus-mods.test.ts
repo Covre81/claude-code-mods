@@ -116,6 +116,26 @@ test('mods sem estado publicado não aparecem vermelhos', async ($, on) => {
   expect(await mounted.find({ type: 'Text', text: '0 de 3 mods ativos' })).toBeDefined()
 })
 
+// Regressão: no app desktop o Button é nativo e ignora o fundo colorido dos
+// filhos, então a pílula de espaços sumia; lá ela é trilho e bolinha coloridos.
+for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
+  test(`toggle é pílula visível no ${surface}`, async ($, on) => {
+    on('env.get', () => ({ value: 'C:/m/clean-view;C:/m/reflexo' }) as never)
+    on('fs.read', (_$, e) => ({ value: JSON.stringify({ name: (e as { path: string }).path.replace(/\\/g, '/').split('/')[2] }) }) as never)
+    on('state.get', { plugin: 'clean-view' }, () => ({ value: { value: true, version: 1 } }) as never)
+    on('state.get', { plugin: 'reflexo' }, () => ({ value: { value: false, version: 1 } }) as never)
+    register(on, {})
+
+    const mounted = await $.ui.mount({ plugin: 'meus-mods', surface, component: 'Pane', requestId: 'meus-mods-panel', props: PANE_PROPS })
+
+    const colors = await backgrounds(mounted)
+    expect(colors.includes(TRACK.true) || colors.includes(TRACK.false)).toBe(false)
+    expect(await mounted.find({ type: 'Text', text: '━━●', color: TRACK.true })).toBeDefined()
+    expect(await mounted.find({ type: 'Text', text: '●━━', color: TRACK.false })).toBeDefined()
+    expect(await mounted.find({ type: 'Text', text: /ligado/ })).toBeUndefined()
+  })
+}
+
 test('reflexo tem toggle e publica o estado no painel', async ($, on) => {
   on('env.get', () => ({ value: 'C:/m/reflexo' }) as never)
   on('fs.read', () => ({ value: JSON.stringify({ name: 'reflexo' }) }) as never)
