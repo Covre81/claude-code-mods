@@ -1,29 +1,17 @@
 {
   "name": "next-prompts",
   "version": "0.1.0",
-  "description": "Band above the prompt with 3 next-step suggestions from a free Ollama cloud model; press one to draft it",
+  "description": "Band above the prompt with 3 next-step suggestions from Gemini 3.8 Flash High through the Antigravity CLI (agy); press one to draft it. The last ~4k chars of the conversation, with secrets redacted, go to Google on every turn.",
   "author": {
     "name": "Bruno Covre"
   },
   "types": "./types/index.d.ts",
   "userConfig": {
-    "model": {
-      "type": "string",
-      "title": "Ollama models",
-      "description": "Comma-separated, in order of preference: a model out of quota or erroring hands over to the next. Tried on the local server (the account signed in there), then, with NEXT_PROMPTS_OLLAMA_KEY set (another account's ollama.com API key), on ollama.com. Measured 2026-10-06: gemma4:31b-cloud 0.8s, gpt-oss:20b-cloud 9.5s; glm/deepseek cloud need paid credits.",
-      "default": "gemma4:31b-cloud,gpt-oss:20b-cloud"
-    },
     "agyModel": {
       "type": "string",
-      "title": "Gemini fallback (agy)",
-      "description": "Last resort when every Ollama source fails: this model through the Antigravity CLI, on the Gemini Pro subscription. Measured 2026-10-13: gemini-3.8-flash-low 7.8s. Empty turns it off.",
-      "default": "gemini-3.8-flash-low"
-    },
-    "ollamaUrl": {
-      "type": "string",
-      "title": "Ollama URL",
-      "description": "Base URL of the Ollama server",
-      "default": "http://127.0.0.1:11434"
+      "title": "Gemini model (agy)",
+      "description": "Model passed to `agy --model`. agy is found at AGY_BIN, else ~/.local/bin/agy (on the Vaio a wrapper that runs it on the ZimaOS server), else %LOCALAPPDATA%/agy/bin/agy.exe.",
+      "default": "gemini-3.8-flash-high"
     }
   }
 }
