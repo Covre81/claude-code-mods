@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { classify, commitCandidate, packageName } from './register'
+import { classify, commitCandidate, isSecretFile, packageName } from './register'
 
 const kindOf = (cmd: string) => classify(cmd)?.kind ?? null
 
@@ -174,4 +174,37 @@ test('terminal: session.cwd failing still holds the classify risks of the same l
   const res = (await $.tool.call({ tool: 'Bash', command: 'git add . && git reset --hard' } as never)) as { deny?: string; text?: string }
   expect(ran()).toBe(false)
   expect(String(res.deny ?? res.text).includes('Não tente de novo')).toBe(true)
+})
+
+// Regressão: caminhos que o classificador não via (auditoria de 2026-11-08).
+describe('commands hidden from the first classifier', () => {
+  test('background &, $(...), backticks, sh -c, eval, xargs, sudo flags and grouped push flags are held', () => {
+    const cases: [string, string][] = [
+      ['true & rm -rf x', 'rm'],
+      ['echo $(rm -rf build)', 'rm'],
+      ['echo `rm -rf build`', 'rm'],
+      ['bash -c "rm -rf build"', 'rm'],
+      ["sh -c 'git reset --hard'", 'git-reset'],
+      ['eval rm -rf build', 'rm'],
+      ['find . -name x | xargs rm -rf', 'rm'],
+      ['ls | xargs -n 1 -I{} rm -f {}', 'rm'],
+      ['sudo -u root rm -rf /tmp/x', 'rm'],
+      ['git push -fu origin main', 'git-push-force'],
+    ]
+    for (const [cmd, kind] of cases) expect([cmd, kindOf(cmd)]).toEqual([cmd, kind])
+  })
+
+  test('redirections are not background jobs', () => {
+    for (const cmd of ['ls 2>&1 | head', 'make &> log.txt', 'git push -u origin main'])
+      expect([cmd, kindOf(cmd)]).toEqual([cmd, null])
+  })
+})
+
+describe('isSecretFile on this machine', () => {
+  test('same rules as the cofre', () => {
+    for (const p of ['/home/u/.ssh/zimaos_vaio', 'id_covrepc', '.credentials.json', '.ai-memory/data/config.toml', '.env'])
+      expect([p, isSecretFile(p)]).toEqual([p, true])
+    for (const p of ['.ssh/config', 'zimaos_vaio.pub', 'pyproject.toml', '.env.example'])
+      expect([p, isSecretFile(p)]).toEqual([p, false])
+  })
 })
