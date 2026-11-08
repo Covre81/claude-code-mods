@@ -258,3 +258,22 @@ describe('on/off toggle', () => {
     expect(reopened.text).toContain('points. Press one to arm a fork')
   })
 })
+
+// Regressão: o snapshot ligado por padrão rodava `git add -A` em todo prompt, ferramenta e fim de
+// turno, prendendo arquivos não rastreados (inclusive segredos) em refs/time-machine/* para sempre.
+test('snapshots are off unless the user turns them on', async ($, on) => {
+  const argvs: string[] = []
+  on('env.get', ($, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
+  on('session.cwd', () => ({ value: '/work' }))
+  on('session.id', () => ({ value: 'old' }))
+  on('fs.read', () => ({ value: '' }))
+  on('command.register', () => ({ value: undefined }) as never)
+  on('ui.status', () => ({ value: undefined }))
+  on('process.run', (_$, e) => {
+    argvs.push((e as { argv: string[] }).argv.join(' '))
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
+  })
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.complete({ reason: 'answer', answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1' })
+  expect(argvs.filter(a => a.startsWith('git '))).toEqual([])
+})
