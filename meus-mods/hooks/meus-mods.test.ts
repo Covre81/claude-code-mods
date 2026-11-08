@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { register } from './register'
+import { register, splitDirs } from './register'
 
 test('/mods registra o comando e abre o painel', async ($, on) => {
   // Nada abaixo do kit de teste desenha paineis de verdade: este fake faz
@@ -22,7 +22,7 @@ const PANE_PROPS = {
 }
 
 test('toggle é feito só de blocos coloridos, sem glifo, igual em qualquer superfície', async ($, on) => {
-  on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
+  on('env.get', () => ({ value: '/m/clean-view' }) as never)
   on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)
   register(on, {})
 
@@ -38,10 +38,10 @@ test('toggle é feito só de blocos coloridos, sem glifo, igual em qualquer supe
 
 test('lista vem das pastas em CLAUDE_CODE_PLUGIN_DIRS, não de uma lista fixa', async ($, on) => {
   const disk: Record<string, string> = {
-    'C:/m/novo-mod/.claude-plugin/plugin.json': JSON.stringify({ name: 'novo-mod', description: 'Mod que o painel nunca viu' }),
-    'C:/m/guarda/.claude-plugin/plugin.json': JSON.stringify({ name: 'guarda' }),
+    '/m/novo-mod/.claude-plugin/plugin.json': JSON.stringify({ name: 'novo-mod', description: 'Mod que o painel nunca viu' }),
+    '/m/guarda/.claude-plugin/plugin.json': JSON.stringify({ name: 'guarda' }),
   }
-  on('env.get', (_$, e) => ({ value: (e as { name: string }).name === 'CLAUDE_CODE_PLUGIN_DIRS' ? 'C:/m/novo-mod;C:\\m\\guarda\\;C:/m/sem-manifesto' : undefined }) as never)
+  on('env.get', (_$, e) => ({ value: (e as { name: string }).name === 'CLAUDE_CODE_PLUGIN_DIRS' ? '/m/novo-mod:/m/guarda/:/m/sem-manifesto' : undefined }) as never)
   on('fs.read', (_$, e) => {
     const text = disk[(e as { path: string }).path.replace(/\\/g, '/')]
     return (text === undefined ? { deny: 'ENOENT' } : { value: text }) as never
@@ -58,7 +58,7 @@ test('lista vem das pastas em CLAUDE_CODE_PLUGIN_DIRS, não de uma lista fixa', 
 })
 
 test('mods aparecem em ordem alfabética', async ($, on) => {
-  on('env.get', () => ({ value: 'C:/m/zeta;C:/m/alfa;C:/m/meio' }) as never)
+  on('env.get', () => ({ value: '/m/zeta:/m/alfa:/m/meio' }) as never)
   on('fs.read', () => ({ deny: 'ENOENT' }) as never)
   register(on, {})
 
@@ -87,7 +87,7 @@ async function backgrounds(mounted: { drawn(): Promise<unknown> }): Promise<stri
 }
 for (const [value, expected] of [[undefined, '0 de 1 mods ativos'], [false, '0 de 1 mods ativos'], [true, '1 de 1 mods ativos']] as const) {
   test(`clean-view com estado ${value} aparece como "${expected}" e na cor certa`, async ($, on) => {
-    on('env.get', () => ({ value: 'C:/m/clean-view' }) as never)
+    on('env.get', () => ({ value: '/m/clean-view' }) as never)
     on('fs.read', () => ({ value: JSON.stringify({ name: 'clean-view' }) }) as never)
     on('state.get', { plugin: 'clean-view' }, () => ({ value: { value, version: 1 } }) as never)
     register(on, {})
@@ -103,7 +103,7 @@ for (const [value, expected] of [[undefined, '0 de 1 mods ativos'], [false, '0 d
 // Regressão: sessão nova com o painel aberto antes de os mods publicarem o
 // estado mostrava todos vermelhos (desligados), como se o usuário os tivesse desligado.
 test('mods sem estado publicado não aparecem vermelhos', async ($, on) => {
-  on('env.get', () => ({ value: 'C:/m/agent-radar;C:/m/reflexo;C:/m/atomic-commit-guard' }) as never)
+  on('env.get', () => ({ value: '/m/agent-radar:/m/reflexo:/m/atomic-commit-guard' }) as never)
   on('fs.read', (_$, e) => ({ value: JSON.stringify({ name: (e as { path: string }).path.replace(/\\/g, '/').split('/')[2] }) }) as never)
   register(on, {})
 
@@ -120,7 +120,7 @@ test('mods sem estado publicado não aparecem vermelhos', async ($, on) => {
 // filhos, então a pílula de espaços sumia; lá ela é trilho e bolinha coloridos.
 for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
   test(`toggle é pílula visível no ${surface}`, async ($, on) => {
-    on('env.get', () => ({ value: 'C:/m/clean-view;C:/m/reflexo' }) as never)
+    on('env.get', () => ({ value: '/m/clean-view:/m/reflexo' }) as never)
     on('fs.read', (_$, e) => ({ value: JSON.stringify({ name: (e as { path: string }).path.replace(/\\/g, '/').split('/')[2] }) }) as never)
     on('state.get', { plugin: 'clean-view' }, () => ({ value: { value: true, version: 1 } }) as never)
     on('state.get', { plugin: 'reflexo' }, () => ({ value: { value: false, version: 1 } }) as never)
@@ -137,7 +137,7 @@ for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
 }
 
 test('reflexo tem toggle e publica o estado no painel', async ($, on) => {
-  on('env.get', () => ({ value: 'C:/m/reflexo' }) as never)
+  on('env.get', () => ({ value: '/m/reflexo' }) as never)
   on('fs.read', () => ({ value: JSON.stringify({ name: 'reflexo' }) }) as never)
   on('state.get', { plugin: 'reflexo' }, () => ({ value: { value: true, version: 1 } }) as never)
   register(on, {})
@@ -146,4 +146,14 @@ test('reflexo tem toggle e publica o estado no painel', async ($, on) => {
 
   expect((await backgrounds(mounted)).includes(TRACK.true)).toBe(true)
   expect(await mounted.find({ type: 'Text', text: '1 de 1 mods ativos' })).toBeDefined()
+})
+
+// Regressão: no Linux o separador é ':' e todo caminho absoluto começa com '/',
+// então ':(?![\\/])' nunca dividia e o painel via um mod só.
+test('splitDirs: separador do Linux e do Windows', () => {
+  expect(splitDirs('/home/a/m/clean-view:/home/a/m/reflexo')).toEqual(['/home/a/m/clean-view', '/home/a/m/reflexo'])
+  expect(splitDirs('/m/a/:/m/b')).toEqual(['/m/a', '/m/b'])
+  expect(splitDirs('C:/m/a;C:\\m\\b\\')).toEqual(['C:/m/a', 'C:\\m\\b'])
+  expect(splitDirs('C:/m/a')).toEqual(['C:/m/a'])
+  expect(splitDirs('')).toEqual([])
 })

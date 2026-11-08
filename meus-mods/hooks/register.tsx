@@ -132,11 +132,11 @@ const META: Record<string, Meta> = {
 
 const GENERIC = { icon: '🧩', accent: '#a0a4ab' }
 
-// Separador de lista de caminhos: ';' no Windows, ':' no resto — mas sem
-// cortar o ':' de "C:/" ou "C:\\".
-const splitDirs = (raw: string) =>
+// Separador de lista de caminhos: ';' no Windows, ':' no resto. O ':' só não
+// divide quando é a letra de drive ("C:"), no início da lista ou logo após ';'.
+export const splitDirs = (raw: string) =>
   raw
-    .split(/;|:(?![\\/])/)
+    .split(/;|(?<!(?:^|;)[A-Za-z]):/)
     .map(d => d.trim().replace(/[\\/]+$/, ''))
     .filter(Boolean)
 
