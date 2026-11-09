@@ -65,8 +65,8 @@ test('rm and Remove-Item reach the shell rewritten, original at the end', async 
   const ran = shell(on)
   await $.tool.call({ tool: 'Bash', command: 'rm -rf dist' } as never)
   await $.tool.call({ tool: 'PowerShell', command: 'del a.txt' } as never)
-  expect(ran[0]!.startsWith("rm() { sh '")).toBe(true)
-  expect(ran[0]!.endsWith('/hooks/lixeira.sh\' "$@"; }; rm -rf dist')).toBe(true)
+  // The unit tests above pin each platform; here only the shape, so it holds on Windows and Linux.
+  expect(ran[0]).toMatch(/^rm\(\) \{ (sh|powershell\.exe -NoProfile -NonInteractive -File) '.*[\\/]hooks\/lixeira\.(sh|ps1)' "\$@"; \}; rm -rf dist$/)
   expect(ran[1]!.startsWith("try { . '")).toBe(true)
   expect(ran[1]!.endsWith("/hooks/remove-item.ps1' } catch { throw 'lixeira: a sombra nao carregou; nada foi apagado' }; del a.txt")).toBe(true)
 })
@@ -82,5 +82,5 @@ test('a failure after the rewritten command ran never runs the original', async 
     deny: 'A lixeira falhou depois de rodar o comando. Confira o resultado antes de repetir.',
   })
   expect(ran.length).toBe(1)
-  expect(ran[0]!.includes('lixeira.sh')).toBe(true)
+  expect(ran[0]).toMatch(/lixeira\.(sh|ps1)/)
 })
