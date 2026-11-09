@@ -53,7 +53,7 @@ describe('looksLikeRule', () => {
   })
 })
 
-type Stubs = { answer?: string; askThrows?: boolean; existing?: string; readError?: string; home?: string }
+type Stubs = { answer?: string; askThrows?: boolean; existing?: string; readError?: string; home?: string; userprofile?: string }
 
 function stub(on: On, s: Stubs) {
   const seen = { asked: [] as string[], sent: [] as string[], status: [] as string[], written: [] as { path: string; text: string }[] }
@@ -65,7 +65,10 @@ function stub(on: On, s: Stubs) {
   on('store.set', () => ({ value: undefined }) as never)
   on('command.register', () => ({ value: undefined }) as never)
   // Linux: USERPROFILE comes back empty, HOME holds the home.
-  on('env.get', (_$, e) => ({ value: (e as { name: string }).name === 'HOME' ? (s.home ?? '/home/t') : '' }) as never)
+  on('env.get', (_$, e) => {
+    const name = (e as { name: string }).name
+    return ({ value: name === 'HOME' ? (s.home ?? '/home/t') : name === 'USERPROFILE' ? (s.userprofile ?? '') : '' }) as never
+  })
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     if (s.askThrows) throw new Error('dismissed')
     const q = (e as { questions: { question: string }[] }).questions[0]!.question
@@ -124,7 +127,15 @@ describe('reflexo hooks', () => {
     const seen = stub(on, { answer: 'Global (~/.claude/CLAUDE.md)' })
     await $.prompt.submit(submit('sempre use types'))
     await $.turn.complete(answered)
-    expect(seen.written[0]!.path.split('\\').join('/')).toBe('/home/t/.claude/CLAUDE.md')
+    expect(seen.written[0]!.path.split('\\').join('/').replace(/^[A-Za-z]:/, '')).toBe('/home/t/.claude/CLAUDE.md')
+  })
+
+  // Windows: USERPROFILE wins over the HOME that Git Bash sets.
+  test('Global prefers USERPROFILE when it is set', async ($, on) => {
+    const seen = stub(on, { answer: 'Global (~/.claude/CLAUDE.md)', userprofile: '/Users/w' })
+    await $.prompt.submit(submit('sempre use types'))
+    await $.turn.complete(answered)
+    expect(seen.written[0]!.path.split('\\').join('/').replace(/^[A-Za-z]:/, '')).toBe('/Users/w/.claude/CLAUDE.md')
   })
 
   test('existing content is kept verbatim; the new line is only appended', async ($, on) => {
