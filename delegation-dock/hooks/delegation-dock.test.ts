@@ -71,7 +71,7 @@ test('background agy: stays in the dock until its notification, then an empty ou
   })
   let read = ''
   on('fs.read', (_$, e) => {
-    read = String((e as { path: string }).path)
+    read = String((e as { path: string }).path).replace(/\\/g, '/').replace(/^[A-Za-z]:/, '') // Windows: backslashes and a drive letter
     return { value: '  \n' } as never
   })
   let context: readonly string[] | undefined
