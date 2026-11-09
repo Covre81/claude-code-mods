@@ -97,6 +97,31 @@ test('secrets in the transcript are redacted before agy sees them', async ($, on
   expect(runs[0]!.stdin).toContain('OPENAI_API_KEY=')
 })
 
+// Regressão: com HOME definido (Git Bash no Windows) o agy virava ~/.local/bin/agy, que lá não existe.
+test('on Windows the agy install under LOCALAPPDATA wins over HOME', async ($, on) => {
+  mock.env(on, { HOME: 'C:/Users/u', LOCALAPPDATA: 'C:/Users/u/AppData/Local/' })
+  const runs = world(on, () => OK(ONE_SUGGESTION))
+
+  await $.turn.complete({ reason: 'answer', answer: 'feito', durationMs: 1, isAborted: false, turnId: 't1' })
+  await new Promise(r => setTimeout(r, 50))
+
+  expect(runs[0]!.argv[0]).toBe('C:/Users/u/AppData/Local/agy/bin/agy.exe')
+})
+
+// Regressão: a cópia da lista de segredos perdeu a regra de flags (--token x ia para o agy).
+test('secret flags in the transcript are redacted before agy sees them', async ($, on) => {
+  mock.env(on, { HOME: '/home/u' })
+  const runs = world(on, () => OK(ONE_SUGGESTION), [
+    { role: 'user', text: 'roda gh auth login --token sekret123abc e cli --secret hunter2xyz', toolUses: [] },
+  ])
+
+  await $.turn.complete({ reason: 'answer', answer: 'feito', durationMs: 1, isAborted: false, turnId: 't1' })
+  await new Promise(r => setTimeout(r, 50))
+
+  expect(runs[0]!.stdin).not.toContain('sekret123abc')
+  expect(runs[0]!.stdin).not.toContain('hunter2xyz')
+})
+
 test('agy failing or answering empty leaves a note, not suggestions', async ($, on) => {
   mock.env(on, { HOME: '/home/u' })
   world(on, () => ({ exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }))

@@ -59,18 +59,20 @@ const SECRETS: [RegExp, string][] = [
   [/AIza[\w-]{35}|AKIA[0-9A-Z]{16}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]{10,}/g, '•••'],
   [/((?:api[_-]?key|access[_-]?token|token|secret|password|passwd|pwd)\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
   [/(\b[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)=)\S+/g, '$1•••'],
+  [/(--(?:token|password|api-key|secret)[= ])\S+/gi, '$1•••'],
   [/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s@]+@/gi, '$1•••@'],
 ]
 export const redact = (s: string) => SECRETS.reduce((t, [re, to]) => t.replace(re, to), s)
 
-/** Where agy lives: AGY_BIN, else ~/.local/bin/agy (Linux; a wrapper there may run it on another host), else the Windows install. */
+/** Where agy lives: AGY_BIN, else the Windows install, else ~/.local/bin/agy (Linux; a wrapper there may run it on another host). */
 async function agyPath($: EngineInterface): Promise<string> {
   const explicit = await $.env.get('AGY_BIN').catch(() => undefined)
   if (explicit) return explicit
-  const home = await $.env.get('HOME').catch(() => undefined)
-  if (home) return `${home.replace(/\/+$/, '')}/.local/bin/agy`
+  // LOCALAPPDATA first: Git Bash sets HOME on Windows too, and ~/.local/bin/agy does not exist there.
   const local = await $.env.get('LOCALAPPDATA').catch(() => undefined)
-  if (local) return `${local}/agy/bin/agy.exe`
+  if (local) return `${local.replace(/[\\/]+$/, '')}/agy/bin/agy.exe`
+  const home = await $.env.get('HOME').catch(() => undefined)
+  if (home) return `${home.replace(/[\\/]+$/, '')}/.local/bin/agy`
   throw new Error('agy not found: set AGY_BIN')
 }
 
