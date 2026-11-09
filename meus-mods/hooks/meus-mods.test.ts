@@ -43,7 +43,7 @@ test('lista vem das pastas em CLAUDE_CODE_PLUGIN_DIRS, não de uma lista fixa', 
   }
   on('env.get', (_$, e) => ({ value: (e as { name: string }).name === 'CLAUDE_CODE_PLUGIN_DIRS' ? '/m/novo-mod:/m/guarda/:/m/sem-manifesto' : undefined }) as never)
   on('fs.read', (_$, e) => {
-    const text = disk[(e as { path: string }).path.replace(/\\/g, '/')]
+    const text = disk[(e as { path: string }).path.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')] // Windows: the engine prefixes a drive letter
     return (text === undefined ? { deny: 'ENOENT' } : { value: text }) as never
   })
   register(on, {})
