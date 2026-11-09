@@ -43,13 +43,14 @@ const isAbs = (p: string) => /^([A-Za-z]:[\\/]|[\\/]|~)/.test(p)
 const toWin = (p: string) => p.replace(/^\/([a-zA-Z])(?=\/|$)/, (_, d: string) => `${d.toUpperCase()}:`)
 const joinDir = (dir: Dir, arg: string | undefined): string => (!arg || arg === '~' ? '~' : isAbs(arg) || !dir ? arg : `${dir}/${arg}`)
 
-const PREFIXES = new Set(['sudo', 'command', 'exec', 'env', 'nohup', 'time', 'then', 'do', 'else', '!'])
+const PREFIXES = new Set(['sudo', 'command', 'exec', 'nohup', 'time', 'then', 'do', 'else', '!'])
 const NODE_ADD: Record<string, readonly string[]> = { npm: ['install', 'i', 'add'], pnpm: ['add', 'install', 'i'], yarn: ['add'], bun: ['add', 'install', 'i'] }
 const PIP_VALUE_FLAGS = new Set(['-r', '--requirement', '-e', '--editable', '-c', '--constraint', '-i', '--index-url', '--extra-index-url', '-t', '--target'])
 
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
 // xargs/sudo flags that take a value: dropped with it so the real command comes next.
 const XARGS_VALUE = new Set(['-I', '-n', '-P', '-L', '-d', '-E', '-s', '-a', '--max-args', '--max-procs', '--delimiter', '--arg-file'])
+const ENV_VALUE = new Set(['-u', '--unset', '-C', '--chdir'])
 const SUDO_VALUE = new Set(['-u', '-g', '-h', '-p', '-C', '-U', '-r', '-t', '-D', '--user', '--group', '--host', '--prompt'])
 
 /** Drops a wrapper (xargs, sudo) and its flags; the words left start with the command it runs. */
@@ -64,7 +65,7 @@ function unwrap(words: string[], valueFlags: ReadonlySet<string>): void {
 /** Each simple command of a shell line with the folder it runs in (after any cd), including the ones nested in $(...), backticks, sh -c and eval. */
 function* commands(command: string, depth = 0): Generator<{ cmd: string; args: string[]; dir: Dir }> {
   if (depth > 3) return
-  for (const m of command.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) yield* commands(m[1] ?? m[2] ?? '', depth + 1)
+  for (const m of command.matchAll(/[$<>]\(([^()]*)\)|`([^`]*)`/g)) yield* commands(m[1] ?? m[2] ?? '', depth + 1)
   let dir: Dir = null
   // A lone & backgrounds a job and starts the next command; >&, &> and && are not that.
   for (const seg of command.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)) {
@@ -72,6 +73,7 @@ function* commands(command: string, depth = 0): Generator<{ cmd: string; args: s
     for (;;) {
       if (words[0] === 'sudo') unwrap(words, SUDO_VALUE)
       else if (words[0] === 'xargs') unwrap(words, XARGS_VALUE)
+      else if (words[0] === 'env') unwrap(words, ENV_VALUE)
       else if (words.length && (PREFIXES.has(words[0]!) || /^[A-Za-z_]\w*=/.test(words[0]!))) words.shift()
       else break
     }
@@ -82,8 +84,10 @@ function* commands(command: string, depth = 0): Generator<{ cmd: string; args: s
       dir = joinDir(dir, args[0])
       continue
     }
-    if (SHELLS.has(cmd.split('/').pop()!) && args.includes('-c')) {
-      yield* commands(args[args.indexOf('-c') + 1] ?? '', depth + 1)
+    // -c may sit in a cluster (-lc, -ec); the shell may come with a Windows path (C:\...\bash).
+    const c = args.findIndex(a => /^-[A-Za-z]*c[A-Za-z]*$/.test(a))
+    if (SHELLS.has(cmd.split(/[\\/]/).pop()!) && c >= 0) {
+      yield* commands(args[c + 1] ?? '', depth + 1)
       continue
     }
     if (cmd === 'eval') {

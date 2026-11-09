@@ -190,6 +190,14 @@ describe('commands hidden from the first classifier', () => {
       ['ls | xargs -n 1 -I{} rm -f {}', 'rm'],
       ['sudo -u root rm -rf /tmp/x', 'rm'],
       ['git push -fu origin main', 'git-push-force'],
+      // Regressão (revisão de 2026-11-09): clusters de -c, bash com caminho do Windows, env com flags, <(...).
+      ['bash -lc "rm -rf build"', 'rm'],
+      ["sh -ec 'git reset --hard'", 'git-reset'],
+      ['"C:\\Program Files\\Git\\bin\\bash.exe" -c "rm -rf x"', 'rm'],
+      ['env -i rm -rf x', 'rm'],
+      ['env -u PATH rm -rf x', 'rm'],
+      ['diff <(rm -rf x) y', 'rm'],
+      ['echo $( echo $(rm -rf x) )', 'rm'],
     ]
     for (const [cmd, kind] of cases) expect([cmd, kindOf(cmd)]).toEqual([cmd, kind])
   })
