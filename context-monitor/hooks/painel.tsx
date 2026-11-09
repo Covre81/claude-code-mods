@@ -22,8 +22,6 @@ const turnStat = atom({ plugin: 'context-monitor', key: 'turn' } as const, null)
 const cost = atom({ plugin: 'context-monitor', key: 'cost' } as const, null)
 const limits = atom({ plugin: 'context-monitor', key: 'limits' } as const, [])
 
-// Same atom as monitor.ts: /monitor on|off.
-const monitorRef = atom({ plugin: 'context-monitor', key: 'isEnabled' } as const, true)
 
 /** Byte-identical every turn: anything that varies here would break the prompt cache through jev-router. */
 export const JUSTIFY = {
@@ -260,8 +258,8 @@ export const register: Register = on => {
 
   on('prompt.compose', async ($, e, next) => {
     const res = await next(e)
-    // /monitor off também tira o texto do prompt, não só o painel.
-    if (!(await read($, monitorRef))) return res
+    // Off means no cost either: the section is prompt tokens on every turn.
+    if (!(await read($, isEnabledRef))) return res
     return { ...res, sections: [...res.sections.filter(s => s.id !== JUSTIFY.id), JUSTIFY] }
   })
 
