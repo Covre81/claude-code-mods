@@ -127,7 +127,7 @@ const META: Record<string, Meta> = {
   guarda: { icon: '🛡', accent: '#e0c84a', description: 'Segura comando destrutivo e pede confirmação', command: null },
   cofre: { icon: '🔐', accent: '#5fd98a', description: 'Mantém chave de API fora da conversa', command: null },
   colisao: { icon: '💥', accent: '#e06c75', description: 'Pergunta antes de editar arquivo que outra sessão mexeu há pouco' },
-  lixeira: { icon: '🗑', accent: '#8a8f99', description: 'Manda rm para a Lixeira do Windows', command: null },
+  lixeira: { icon: '🗑', accent: '#8a8f99', description: 'Manda rm para a lixeira (Windows ou gio no Linux)', command: null },
 }
 
 const GENERIC = { icon: '🧩', accent: '#a0a4ab' }
