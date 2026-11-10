@@ -10,7 +10,7 @@
     "agyModel": {
       "type": "string",
       "title": "Gemini model (agy)",
-      "description": "Model passed to `agy --model`. agy is found at AGY_BIN, else ~/.local/bin/agy (on the Vaio a wrapper that runs it on the ZimaOS server), else %LOCALAPPDATA%/agy/bin/agy.exe.",
+      "description": "Model passed to `agy --model`. agy is found at AGY_BIN, else %LOCALAPPDATA%/agy/bin/agy.exe (Windows), else ~/.local/bin/agy (on the Vaio a wrapper that runs it on the ZimaOS server).",
       "default": "gemini-3.8-flash-high"
     }
   }
