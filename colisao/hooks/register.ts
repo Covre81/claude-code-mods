@@ -10,7 +10,8 @@ const CANCEL = 'Cancelar'
 type Write = { session: string; at: number }
 type Writes = Record<string, Write>
 
-export const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+// Only Windows paths are case-insensitive; on Linux Foo.ts and foo.ts are different files.
+export const normPath = (p: string) => (/^[A-Za-z]:|\\/.test(p) ? p.replace(/\\/g, '/').toLowerCase() : p)
 
 /** Another session's write on this path inside the window, if any. */
 export function collision(writes: Writes, path: string, session: string, now: number): Write | undefined {
