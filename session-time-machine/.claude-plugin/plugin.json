@@ -27,7 +27,7 @@
     "snapshots": {
       "type": "boolean",
       "title": "Snapshot the working tree",
-      "description": "Commit the working tree with a throwaway git index at each point so a fork can restore the files into a worktree Off by default: every prompt, edit and turn end runs `git add -A`, and untracked files stay in refs/time-machine/* until removed.",
+      "description": "Commit the working tree with a throwaway git index at each point so a fork can restore the files into a worktree. Off by default: every prompt, edit and turn end runs `git add -A`, and untracked files stay in refs/time-machine/* until removed.",
       "default": false
     },
     "openTerminal": {
