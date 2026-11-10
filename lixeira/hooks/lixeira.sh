@@ -1,8 +1,9 @@
 #!/bin/sh
 # lixeira (Linux): o rm do Claude manda para a lixeira do desktop (gio trash) em vez de apagar.
 # Imita o rm no que importa: -f ignora inexistentes, diretório só com -r/-R/-d. Falha fechada:
-# se a lixeira recusar, nada é apagado; a exceção é /tmp e /var/tmp (sem lixeira, temporários).
-force=0; recursive=0; endopts=0; status=0; n=$#
+# se a lixeira recusar, nada é apagado; a exceção é /tmp e /var/tmp: o gio recusa "system internal
+# mounts" (tmpfs) e sem ela nenhum rm de temporário funcionaria. O resumo em stderr diz qual foi qual.
+force=0; recursive=0; endopts=0; status=0; n=$#; sent=0; gone=0
 while [ "$n" -gt 0 ]; do
   a=$1; shift; n=$((n - 1))
   if [ "$endopts" = 0 ]; then
@@ -31,10 +32,13 @@ for p do
   fi
   # gio has no "--": a relative name starting with - would be an option, so it goes as ./name.
   case $p in /*) q=$p ;; *) q=./$p ;; esac
-  if gio trash "$q" 2>/dev/null; then continue; fi
+  if gio trash "$q" 2>/dev/null; then sent=$((sent + 1)); continue; fi
   case $(realpath -m -- "$p") in
-    /tmp/*|/var/tmp/*) command rm -rf -- "$p" || status=1 ;;
+    /tmp/*|/var/tmp/*) if command rm -rf -- "$p"; then gone=$((gone + 1)); else status=1; fi ;;
     *) echo "lixeira: '$p' não foi para a lixeira; nada foi apagado" >&2; status=1 ;;
   esac
 done
+[ "$sent" = 1 ] && echo "lixeira: 1 item enviado para a lixeira" >&2
+[ "$sent" -gt 1 ] && echo "lixeira: $sent itens enviados para a lixeira" >&2
+[ "$gone" -gt 0 ] && echo "lixeira: $gone apagado(s) de vez em /tmp ou /var/tmp (sem lixeira)" >&2
 exit "$status"

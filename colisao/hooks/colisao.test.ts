@@ -8,6 +8,13 @@ const MIN = 60_000
 describe('pure helpers', () => {
   test('normPath folds slashes and case (Windows paths)', () => {
     expect(normPath('C:\\Dev\\App\\a.ts')).toBe('c:/dev/app/a.ts')
+    expect(normPath('c:/Dev/a.ts')).toBe('c:/dev/a.ts')
+  })
+
+  // Regressão: no Linux Foo.ts e foo.ts são arquivos diferentes; dobrar a caixa gerava pergunta à toa.
+  test('normPath keeps case on POSIX paths', () => {
+    expect(normPath('/home/u/Foo.ts')).toBe('/home/u/Foo.ts')
+    expect(collision({ '/home/u/Foo.ts': { session: 'A', at: 0 } }, '/home/u/foo.ts', 'B', MIN)).toBe(undefined)
   })
 
   test('collision only for another session inside 30 min', () => {
