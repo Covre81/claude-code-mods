@@ -76,7 +76,7 @@ Recebe flags e caminhos e imita o `rm` real, porque o modelo raciocina pela saí
 
 - Saída: código 0 se tudo saiu, 1 se algum item falhou. `try/catch` em cada item
   (testado: sem ele, a exceção do arquivo travado sai com código 0).
-- Ao final, em stderr: `🗑 N itens enviados para a Lixeira do Windows`. É stderr para
+- Ao final, em stderr: `lixeira: N itens enviados para a Lixeira do Windows`. É stderr para
   não misturar com a saída de um comando encadeado num pipe.
 - Flags desconhecidas (`-i`, `-v`, `--`) são ignoradas, sem erro.
 - Roda sem `-ExecutionPolicy Bypass`: a política desta máquina (`CurrentUser
@@ -118,8 +118,11 @@ Recebe flags e caminhos e imita o `rm` real, porque o modelo raciocina pela saí
   (padrão de alguns % do disco) pode ser apagada de vez pelo Windows. O tamanho não é
   medido antes, porque em `node_modules` isso leva muitos segundos. O `guarda` já para
   todo `rm -rf` para o usuário ver.
-- Só Windows: o mod não faz nada útil em outro sistema (`powershell.exe` ausente → o
-  `rm` falha com erro visível, não apaga).
+- Linux (2026-11): `lixeira.sh` usa `gio trash`, com o mesmo contrato (falha fechada,
+  resumo em stderr). Exceção: `/tmp` e `/var/tmp` são apagados de vez, porque o `gio`
+  recusa "system internal mounts" (tmpfs, testado 2026-11-10) e sem a exceção nenhum `rm`
+  de temporário funcionaria; o resumo diz quantos foram de vez. Sem `gio`, nada é apagado.
+  Teste em `sh lixeira/hooks/lixeira.sh.test` (gio falso), à parte do `claude plugin test`.
 
 ## Fora de escopo
 
