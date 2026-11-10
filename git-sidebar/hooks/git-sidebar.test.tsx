@@ -12,6 +12,7 @@ import {
   parseLog,
   parseTrack,
   parseWorktrees,
+  switchArgv,
   trackLabel,
 } from './git.ts'
 
@@ -257,4 +258,10 @@ describe('the Arquivos tab', () => {
     expect(await ui.find({ key: 'br:feature/login' })).toBeDefined()
     await ui.unmount()
   })
+})
+
+// Regressão: uma ref chamada "--orphan=x" virava opção do git switch e esvaziava a árvore.
+test('switchArgv ends options before the branch name', () => {
+  expect(switchArgv('--orphan=x')).toEqual(['git', 'switch', '--no-guess', '--', '--orphan=x'])
+  expect(switchArgv('main')).toEqual(['git', 'switch', '--no-guess', '--', 'main'])
 })

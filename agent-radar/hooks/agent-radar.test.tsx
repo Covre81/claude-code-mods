@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { describe as label, elapsed, isShown } from '../hooks/register'
 
@@ -154,5 +154,19 @@ describe('agent-radar', () => {
     const root: any = await band.drawn()
     expect(root.children.map((c: any) => c.props.key)).toEqual(['band:where-am-i', 'band:agent-radar'])
     await band.unmount()
+  })
+
+  test('radar-toggle on|off persiste o estado no $.store e session.start restaura', async ($, on) => {
+    mock.store(on, { isEnabled: false })
+    engine(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const offText = await $.command.run({ command: 'radar', args: '' } as any)
+    expect(offText.text).toContain('desativado')
+
+    const toggledOn = await $.command.run({ command: 'radar-toggle', args: 'on' } as any)
+    expect(toggledOn.text).toBe('agent-radar ativado.')
+
+    const toggledOff = await $.command.run({ command: 'radar-toggle', args: 'off' } as any)
+    expect(toggledOff.text).toBe('agent-radar desativado.')
   })
 })

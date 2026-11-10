@@ -13,12 +13,22 @@ export function delegateOf(command: string): string | undefined {
   return undefined
 }
 
+const RUNNERS = new Set(['npx', 'uv', 'run', 'python', 'python3', 'py', 'node', 'bun', 'pnpm', 'dlx', 'exec', '-m', '-I', 'sudo'])
+
+/** Short name for a background command: last `&&` segment, minus env vars and runner prefixes, basename only. */
+// ponytail: heuristic label; a weird command just shows its first odd token.
+export function jobLabel(command: string): string {
+  const segment = command.split(/&&|;/).map(s => s.trim()).filter(s => s && !/^cd\s/.test(s)).at(-1) ?? ''
+  const token = segment.split(/\s+/).find(t => t && !/^\w+=/.test(t) && !RUNNERS.has(t))
+  return token ? token.replace(/^["']|["']$/g, '').split(/[\\/]/).at(-1)! : 'comando'
+}
+
 /** stdout sent to a file (`> out.txt`): an empty task output then says nothing about agy. */
 export const isRedirected = (command: string) => /(^|[^2&>])>>?\s*[^&\s]/.test(command)
 
 export const EMPTY_AGY =
   'delegation-dock: agy terminou com saída VAZIA (exit 0). É a falha silenciosa conhecida do `agy -p` (CLAUDE.md, 2026-10-06): ' +
-  'não trate como resposta. Remonte como bundle via stdin, sem -p: `agy --mode plan --model gemini-3.1-pro-high --print-timeout 540s < bundle.txt`.'
+  'não trate como resposta. Remonte como bundle via stdin, sem -p: `agy --mode plan --model "Gemini 4 Argon (High)" --print-timeout 540s < bundle.txt`.'
 
 export function dockText(jobs: Iterable<Job>, now: number): string | undefined {
   const parts = [...jobs].map(j => `${j.tool} ${Math.round((now - j.startedAt) / 1000)}s`)
@@ -47,7 +57,7 @@ export const register: Register = on => {
     await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     await $.command.register({
       name: 'delegation-dock',
-      description: 'Liga/desliga a linha de status das delegações (agy/codex/ollama).',
+      description: 'Liga/desliga a linha de status das delegações e comandos em background.',
       argumentHint: 'on|off',
     })
     return next(e)
@@ -67,7 +77,7 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (!(await read($, isEnabledRef))) return next(e)
-    const tool = delegateOf(e.command)
+    const tool = delegateOf(e.command) ?? (e.run_in_background ? jobLabel(e.command) : undefined)
     if (!tool) return next(e)
 
     const key = `fg${++fg}`
@@ -102,10 +112,14 @@ export const register: Register = on => {
     jobs.delete(id)
     refresh($)
     const completed = /<status>completed<\/status>/.test(e.text)
-    if (job.tool !== 'agy' || job.isRedirected || !completed || !job.outputPath) return next(e)
-    const text = await $.fs.read(job.outputPath).catch(() => undefined)
-    if (text === undefined || text.trim()) return next(e)
-    $.ui.toast('agy devolveu vazio')
-    return next({ ...e, context: [...(e.context ?? []), EMPTY_AGY] })
+    const isEmptyAgy =
+      job.tool === 'agy' && !job.isRedirected && completed && job.outputPath !== undefined &&
+      ((await $.fs.read(job.outputPath).catch(() => undefined))?.trim() === '')
+    if (isEmptyAgy) {
+      $.ui.toast('agy devolveu vazio')
+      return next({ ...e, context: [...(e.context ?? []), EMPTY_AGY] })
+    }
+    $.ui.toast(completed ? `✅ ${job.tool} terminou` : `❌ ${job.tool} falhou`)
+    return next(e)
   }).catch(($, e, next) => next(e))
 }

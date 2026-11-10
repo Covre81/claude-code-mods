@@ -30,6 +30,14 @@ describe('looksLikeRule', () => {
     expect(looksLikeRule('nao consegui rodar')).toBe(false)
   })
 
+  // Regressão: "não esta carrengando" virou regra no CLAUDE.md global (2026-11).
+  test('rejects status reports that start with não', () => {
+    for (const s of ['não esta carrengando', 'não está abrindo', 'nao ta funcionando', 'não carrega a página', 'não apareceu nada', 'não abriu', 'não achei o arquivo', 'não tem nada lá', 'não foi', 'não rodou'])
+      expect([s, looksLikeRule(s)]).toEqual([s, false])
+    for (const s of ['não use any', 'nunca faça push sem pedir', 'não deixe de incluir os testes', 'não instale binário sem checksum', 'não suba sem teste', 'não mostre segredos', 'não salve token no repo', 'não estabeleça conexão sem TLS', 'não tabule com espaços'])
+      expect([s, looksLikeRule(s)]).toEqual([s, true])
+  })
+
   test('rejects multi-line prompts', () => {
     expect(looksLikeRule('sempre X\n## Outra')).toBe(false)
     expect(looksLikeRule('sempre X\r\nmais')).toBe(false)
@@ -45,7 +53,7 @@ describe('looksLikeRule', () => {
   })
 })
 
-type Stubs = { answer?: string; askThrows?: boolean; existing?: string; readError?: string; home?: string }
+type Stubs = { answer?: string; askThrows?: boolean; existing?: string; readError?: string; home?: string; userprofile?: string }
 
 function stub(on: On, s: Stubs) {
   const seen = { asked: [] as string[], sent: [] as string[], status: [] as string[], written: [] as { path: string; text: string }[] }
@@ -56,7 +64,11 @@ function stub(on: On, s: Stubs) {
   on('store.get', () => ({ value: true }) as never)
   on('store.set', () => ({ value: undefined }) as never)
   on('command.register', () => ({ value: undefined }) as never)
-  on('env.get', () => ({ value: s.home ?? 'C:/Users/t' }) as never)
+  // Linux: USERPROFILE comes back empty, HOME holds the home.
+  on('env.get', (_$, e) => {
+    const name = (e as { name: string }).name
+    return ({ value: name === 'HOME' ? (s.home ?? '/home/t') : name === 'USERPROFILE' ? (s.userprofile ?? '') : '' }) as never
+  })
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     if (s.askThrows) throw new Error('dismissed')
     const q = (e as { questions: { question: string }[] }).questions[0]!.question
@@ -115,7 +127,15 @@ describe('reflexo hooks', () => {
     const seen = stub(on, { answer: 'Global (~/.claude/CLAUDE.md)' })
     await $.prompt.submit(submit('sempre use types'))
     await $.turn.complete(answered)
-    expect(seen.written[0]!.path.split('\\').join('/')).toBe('C:/Users/t/.claude/CLAUDE.md')
+    expect(seen.written[0]!.path.split('\\').join('/').replace(/^[A-Za-z]:/, '')).toBe('/home/t/.claude/CLAUDE.md')
+  })
+
+  // Windows: USERPROFILE wins over the HOME that Git Bash sets.
+  test('Global prefers USERPROFILE when it is set', async ($, on) => {
+    const seen = stub(on, { answer: 'Global (~/.claude/CLAUDE.md)', userprofile: '/Users/w' })
+    await $.prompt.submit(submit('sempre use types'))
+    await $.turn.complete(answered)
+    expect(seen.written[0]!.path.split('\\').join('/').replace(/^[A-Za-z]:/, '')).toBe('/Users/w/.claude/CLAUDE.md')
   })
 
   test('existing content is kept verbatim; the new line is only appended', async ($, on) => {

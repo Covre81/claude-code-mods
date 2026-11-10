@@ -7,6 +7,7 @@ const isEnabledRef = atom({ plugin: 'cache-frio', key: 'isEnabled' } as const, t
 // Upgrade: read the TTL from the event once the host exposes it (today only PreModelSwitch has cache_ttl).
 const TTL_MS = 60 * 60 * 1000
 const MIN_TOKENS = 100_000
+const WARN_MIN = 5
 
 export function minutesLeft({ idleMs }: { idleMs: number }): number {
   return Math.max(0, Math.floor((TTL_MS - idleMs) / 60_000))
@@ -28,7 +29,7 @@ const formatIdle = (ms: number) => {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
 }
 
-type State = { lastAnswerAt: number | undefined; ticker: Timer | undefined }
+type State = { lastAnswerAt: number | undefined; ticker: Timer | undefined; isWarned: boolean }
 
 /** Never rejects: the status line is decoration and must not break the hooks that call it. */
 async function refresh($: EngineInterface, state: State): Promise<void> {
@@ -43,7 +44,12 @@ async function refresh($: EngineInterface, state: State): Promise<void> {
       $.ui.status(undefined)
       return
     }
-    $.ui.status(`cache: ${minutesLeft({ idleMs })} min`)
+    const left = minutesLeft({ idleMs })
+    $.ui.status(`cache: ${left} min`)
+    if (left <= WARN_MIN && !state.isWarned) {
+      state.isWarned = true
+      $.ui.toast(`Cache esfria em ${left} min: ${Math.round(tokens / 1000)} mil tokens a reler. Mande o próximo prompt agora ou /compact.`)
+    }
     state.ticker ??= $.clock.every(60_000, () => void refresh($, state))
   } catch {
     state.ticker?.cancel()
@@ -52,7 +58,7 @@ async function refresh($: EngineInterface, state: State): Promise<void> {
 }
 
 export const register: Register = on => {
-  const state: State = { lastAnswerAt: undefined, ticker: undefined }
+  const state: State = { lastAnswerAt: undefined, ticker: undefined, isWarned: false }
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('isEnabled').catch(() => undefined)
@@ -79,7 +85,10 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (!e.agentId) state.lastAnswerAt = await $.clock.now()
+    if (!e.agentId) {
+      state.lastAnswerAt = await $.clock.now()
+      state.isWarned = false
+    }
     await refresh($, state)
     return next(e)
   }).catch(($, e, next) => next(e))

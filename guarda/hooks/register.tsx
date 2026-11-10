@@ -20,7 +20,7 @@ export type Risk =
   | { kind: 'secret-commit'; label: string; args: string[]; dir: Dir }
 
 const EXPLAIN: Record<Risk['kind'], string> = {
-  rm: 'Apaga arquivos ou pastas. Com o mod lixeira ligado, o rm simples manda para a Lixeira do Windows; /usr/bin/rm, command/env/exec rm e xargs rm apagam de vez, sem Ctrl+Z.',
+  rm: 'Apaga arquivos ou pastas. Com o mod lixeira ligado, o rm simples vai para a lixeira do sistema; /usr/bin/rm, command/env/exec rm e xargs rm apagam de vez, sem Ctrl+Z.',
   'git-reset': 'Joga fora tudo que foi alterado e ainda não virou commit. O git não guarda cópia disso.',
   'git-clean': 'Apaga arquivos que o git nunca registrou (os novos). Como não estão no histórico, somem de vez.',
   'git-push-force': 'Reescreve o histórico no GitHub. Commits que só existem lá podem desaparecer.',
@@ -43,21 +43,55 @@ const isAbs = (p: string) => /^([A-Za-z]:[\\/]|[\\/]|~)/.test(p)
 const toWin = (p: string) => p.replace(/^\/([a-zA-Z])(?=\/|$)/, (_, d: string) => `${d.toUpperCase()}:`)
 const joinDir = (dir: Dir, arg: string | undefined): string => (!arg || arg === '~' ? '~' : isAbs(arg) || !dir ? arg : `${dir}/${arg}`)
 
-const PREFIXES = new Set(['sudo', 'command', 'exec', 'env', 'nohup', 'time', 'then', 'do', 'else', '!'])
+const PREFIXES = new Set(['sudo', 'command', 'exec', 'nohup', 'time', 'then', 'do', 'else', '!'])
 const NODE_ADD: Record<string, readonly string[]> = { npm: ['install', 'i', 'add'], pnpm: ['add', 'install', 'i'], yarn: ['add'], bun: ['add', 'install', 'i'] }
 const PIP_VALUE_FLAGS = new Set(['-r', '--requirement', '-e', '--editable', '-c', '--constraint', '-i', '--index-url', '--extra-index-url', '-t', '--target'])
 
-/** Each simple command of a shell line with the folder it runs in (after any cd). */
-function* commands(command: string): Generator<{ cmd: string; args: string[]; dir: Dir }> {
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
+// xargs/sudo flags that take a value: dropped with it so the real command comes next.
+const XARGS_VALUE = new Set(['-I', '-n', '-P', '-L', '-d', '-E', '-s', '-a', '--max-args', '--max-procs', '--delimiter', '--arg-file'])
+const ENV_VALUE = new Set(['-u', '--unset', '-C', '--chdir'])
+const SUDO_VALUE = new Set(['-u', '-g', '-h', '-p', '-C', '-U', '-r', '-t', '-D', '--user', '--group', '--host', '--prompt'])
+
+/** Drops a wrapper (xargs, sudo) and its flags; the words left start with the command it runs. */
+function unwrap(words: string[], valueFlags: ReadonlySet<string>): void {
+  words.shift()
+  while (words.length && words[0]!.startsWith('-')) {
+    const flag = words.shift()!
+    if (valueFlags.has(flag)) words.shift()
+  }
+}
+
+/** Each simple command of a shell line with the folder it runs in (after any cd), including the ones nested in $(...), backticks, sh -c and eval. */
+function* commands(command: string, depth = 0): Generator<{ cmd: string; args: string[]; dir: Dir }> {
+  if (depth > 3) return
+  for (const m of command.matchAll(/[$<>]\(([^()]*)\)|`([^`]*)`/g)) yield* commands(m[1] ?? m[2] ?? '', depth + 1)
   let dir: Dir = null
-  for (const seg of command.split(/&&|\|\||;|\||\n/)) {
+  // A lone & backgrounds a job and starts the next command; >&, &> and && are not that.
+  for (const seg of command.split(/&&|\|\||;|\||\n|(?<![>&])&(?![>&])/)) {
     const words = tokenize(seg.trim().replace(/^[({]+\s*/, '').replace(/\s*[)}]+$/, ''))
-    while (words.length && (PREFIXES.has(words[0]!) || /^[A-Za-z_]\w*=/.test(words[0]!))) words.shift()
+    for (;;) {
+      if (words[0] === 'sudo') unwrap(words, SUDO_VALUE)
+      else if (words[0] === 'xargs') unwrap(words, XARGS_VALUE)
+      else if (words[0] === 'env') unwrap(words, ENV_VALUE)
+      else if (words.length && (PREFIXES.has(words[0]!) || /^[A-Za-z_]\w*=/.test(words[0]!))) words.shift()
+      else break
+    }
     const [first, ...args] = words
     if (!first) continue
     const cmd = first.replace(/^\\/, '').replace(/\.exe$/i, '')
     if (cmd === 'cd') {
       dir = joinDir(dir, args[0])
+      continue
+    }
+    // -c may sit in a cluster (-lc, -ec); the shell may come with a Windows path (C:\...\bash).
+    const c = args.findIndex(a => /^-[A-Za-z]*c[A-Za-z]*$/.test(a))
+    if (SHELLS.has(cmd.split(/[\\/]/).pop()!) && c >= 0) {
+      yield* commands(args[c + 1] ?? '', depth + 1)
+      continue
+    }
+    if (cmd === 'eval') {
+      yield* commands(args.join(' '), depth + 1)
       continue
     }
     yield { cmd, args, dir }
@@ -113,7 +147,7 @@ function classifyCmd(cmd: string, args: string[], dir: Dir): Risk | null {
     // Without -f git refuses to clean (clean.requireForce), and -n is the dry run.
     if (sub === 'clean' && (short.includes('f') || rest.includes('--force')) && !short.includes('n') && !rest.includes('--dry-run'))
       return { kind: 'git-clean', label: 'git clean', args: rest, dir: gitDir }
-    if (sub === 'push' && rest.some(a => a === '--force' || a === '-f' || a.startsWith('--force-with-lease') || a.startsWith('+')))
+    if (sub === 'push' && rest.some(a => a === '--force' || /^-[^-]*f/.test(a) || a.startsWith('--force-with-lease') || a.startsWith('+')))
       return { kind: 'git-push-force', label: 'git push --force', args: rest, dir: gitDir }
     const isStagedOnly = sub === 'restore' && rest.includes('--staged') && !rest.includes('--worktree') && !rest.includes('-W')
     if ((sub === 'checkout' || sub === 'restore') && rest.includes('.') && !isStagedOnly)
@@ -192,11 +226,20 @@ async function git($: EngineInterface, cwd: string, args: string[]) {
 }
 
 // ponytail: copy of cofre/hooks/secrets.ts isSecretFile; plugins load in isolation, a ../../cofre import leaves the plugin root.
-function isSecretFile(path: string): boolean {
+export function isSecretFile(path: string): boolean {
   const base = (path.replace(/["']/g, '').split(/[\\/]/).pop() ?? '').toLowerCase()
+  const full = path.replace(/["']/g, '').replace(/\\/g, '/').toLowerCase()
   if (/^\.env(\..+)?$/.test(base)) return !/\.(example|sample|template)$/.test(base)
   if (base.endsWith('.pub')) return false
-  return /\.(pem|key)$/.test(base) || /^credentials.*\.json$/.test(base) || /^id_(rsa|ed25519)/.test(base)
+  if (/(^|\/)\.ssh\//.test(full)) return !/^(config.*|known_hosts.*|authorized_keys.*|environment)$/.test(base)
+  if (base === 'config.toml') return /(^|\/)\.ai-memory\//.test(full)
+  if (base === 'auth.json') return /(^|\/)\.codex\//.test(full)
+  return (
+    /\.(pem|key|p12|pfx|jks|keystore)$/.test(base) ||
+    /^\.?credentials.*\.json$/.test(base) ||
+    /^id_[\w-]+$/.test(base) ||
+    ['oauth_creds.json', '.netrc', '.pgpass'].includes(base)
+  )
 }
 
 /** Secret files this add/commit would put in history: `git add -n` for add, the index (+ worktree with -a) for commit. */

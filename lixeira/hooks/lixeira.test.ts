@@ -28,7 +28,12 @@ describe('hasDelete powershell', () => {
 })
 
 describe('rewrite', () => {
-  test('bash: rm function first, original command intact at the end', () => {
+  // Regressão: no Linux o rm virava powershell.exe (exit 127) e nenhum rm funcionava.
+  test('bash on Linux: rm goes to lixeira.sh (gio trash)', () => {
+    expect(rewrite('rm -rf "a b"', 'bash', '/m/lixeira/hooks')).toBe(`rm() { sh '/m/lixeira/hooks/lixeira.sh' "$@"; }; rm -rf "a b"`)
+  })
+
+  test('bash on Windows: rm function first, original command intact at the end', () => {
     const out = rewrite('rm -rf "a b"', 'bash', 'C:/m/lixeira/hooks')
     expect(out).toBe(`rm() { powershell.exe -NoProfile -NonInteractive -File 'C:/m/lixeira/hooks/lixeira.ps1' "$@"; }; rm -rf "a b"`)
   })
@@ -60,8 +65,8 @@ test('rm and Remove-Item reach the shell rewritten, original at the end', async 
   const ran = shell(on)
   await $.tool.call({ tool: 'Bash', command: 'rm -rf dist' } as never)
   await $.tool.call({ tool: 'PowerShell', command: 'del a.txt' } as never)
-  expect(ran[0]!.startsWith('rm() { powershell.exe')).toBe(true)
-  expect(ran[0]!.endsWith('/hooks/lixeira.ps1\' "$@"; }; rm -rf dist')).toBe(true)
+  // The unit tests above pin each platform; here only the shape, so it holds on Windows and Linux.
+  expect(ran[0]).toMatch(/^rm\(\) \{ (sh|powershell\.exe -NoProfile -NonInteractive -File) '.*[\\/]hooks\/lixeira\.(sh|ps1)' "\$@"; \}; rm -rf dist$/)
   expect(ran[1]!.startsWith("try { . '")).toBe(true)
   expect(ran[1]!.endsWith("/hooks/remove-item.ps1' } catch { throw 'lixeira: a sombra nao carregou; nada foi apagado' }; del a.txt")).toBe(true)
 })
@@ -77,5 +82,5 @@ test('a failure after the rewritten command ran never runs the original', async 
     deny: 'A lixeira falhou depois de rodar o comando. Confira o resultado antes de repetir.',
   })
   expect(ran.length).toBe(1)
-  expect(ran[0]!.includes('lixeira.ps1')).toBe(true)
+  expect(ran[0]).toMatch(/lixeira\.(sh|ps1)/)
 })

@@ -65,7 +65,7 @@ export function logArgv(branch: string, count = 5): string[] {
 }
 
 export function switchArgv(branch: string): string[] {
-  return ['git', 'switch', '--no-guess', branch]
+  return ['git', 'switch', '--no-guess', '--', branch]
 }
 
 const stripHeads = (ref: string) => ref.replace(/^refs\/heads\//, '')

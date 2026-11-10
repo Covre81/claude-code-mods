@@ -74,11 +74,28 @@ describe('maskDeep', () => {
   })
 })
 
+// Regressão (Vaio/Linux): chaves SSH sem prefixo id_rsa/id_ed25519, o .credentials.json do Claude
+// Code e o config.toml do ai-memory passavam como arquivo comum.
+describe('isSecretFile on this machine', () => {
+  test('ssh private keys of any name, agent credentials and the ai-memory config', () => {
+    for (const p of ['/home/u/.ssh/zimaos_vaio', '~/.ssh/id_covrepc', '/home/u/.claude/.credentials.json', '~/.ai-memory/data/config.toml', '/home/u/.codex/auth.json', '~/.gemini/oauth_creds.json', '~/.netrc', 'release.keystore', 'cert.p12'])
+      expect([p, isSecretFile(p)]).toEqual([p, true])
+    for (const p of ['~/.ssh/config', '~/.ssh/known_hosts', '~/.ssh/known_hosts.old', '~/.ssh/authorized_keys', '~/.ssh/zimaos_vaio.pub', 'pyproject.toml', 'app/config.toml', 'src/auth.json'])
+      expect([p, isSecretFile(p)]).toEqual([p, false])
+  })
+})
+
 describe('secretReadTarget', () => {
   test('reader verb plus secret file', () => {
     expect(secretReadTarget('cat .env')).toBe('.env')
     expect(secretReadTarget('cd app && Get-Content "app/.env.local" | Select -First 3')).toBe('app/.env.local')
     expect(secretReadTarget('type C:\\x\\server.pem')).toBe('C:\\x\\server.pem')
+  })
+
+  // Regressão: só cat/head/tail contavam como leitura; grep, sed, base64 e um python -c liam o .env inteiro.
+  test('any tool that prints a file counts as reading it', () => {
+    for (const c of ['grep . ~/git/jev-router/.env', "sed -n p .env", 'base64 ~/.ssh/zimaos_vaio', 'xxd .env', "awk 1 .env", 'python3 -c "print(open(\'.env\').read())" .env', 'rg KEY .env'])
+      expect([c, secretReadTarget(c) !== null]).toEqual([c, true])
   })
 
   test('writes, copies and git pass', () => {

@@ -31,10 +31,10 @@ const HITS = [{ workspace: 'default', project: 'JEV-APP-PC', path: 'gotchas/x.md
 test('terminal: a composer prompt gets the notes; slash commands, short and bridge prompts do not', async ($, on) => {
   mock.clock(on)
   const urls: string[] = []
-  on('session.cwd', () => ({ value: 'C:/Dev/JEV-APP-PC/src' }) as never)
+  on('session.cwd', () => ({ value: '/home/u/Dev/JEV-APP-PC/src' }) as never)
   on('fs.read', (_$, e) => {
-    const path = String((e as { path: string }).path).replace(/\\/g, '/') // the engine hands paths over Windows-style
-    return (path === 'C:/Dev/JEV-APP-PC/.ai-memory.toml' ? { value: 'workspace = "default"\nproject = "JEV-APP-PC"' } : { deny: 'ENOENT' }) as never
+    const path = String((e as { path: string }).path).replace(/\\/g, '/').replace(/^[A-Za-z]:/, '') // Windows: backslashes and a drive letter
+    return (path === '/home/u/Dev/JEV-APP-PC/.ai-memory.toml' ? { value: 'workspace = "default"\nproject = "JEV-APP-PC"' } : { deny: 'ENOENT' }) as never
   })
 
   on('http.fetch', (_$, e) => {

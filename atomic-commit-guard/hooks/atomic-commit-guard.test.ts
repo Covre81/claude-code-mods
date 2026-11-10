@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { commitMessage, messageProblems, scopeDirs } from './register'
 
@@ -58,6 +58,26 @@ function commitWorld(on: On, stdout: string) {
 }
 
 describe('atomic-commit-guard hook', () => {
+  test('persiste o estado no $.store e session.start restaura estado salvo', async ($, on) => {
+    mock.store(on, { isEnabled: false })
+    on('session.start', (_$: any, e: any) => ({ sessionId: 's', cwd: e.cwd }))
+    on('command.register', () => ({ value: undefined }))
+    const ran = commitWorld(on, 'guarda/hooks/register.tsx\ncofre/hooks/register.tsx\n')
+
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: 'C:/Dev/app' } as any)
+
+    const command = 'git commit -m "feat: altera dois mods" -m "Co-Authored-By: Claude <noreply@anthropic.com>"'
+    const res = (await $.tool.call({ tool: 'Bash', command } as never)) as { deny?: string }
+    expect(res.deny).toBeUndefined()
+    expect(ran()).toBe(true)
+
+    const turnOn = await $.command.run({ command: 'commit-guard', args: 'on' } as any)
+    expect(turnOn.text).toBe('atomic-commit-guard ativado.')
+
+    const turnOff = await $.command.run({ command: 'commit-guard', args: 'off' } as any)
+    expect(turnOff.text).toBe('atomic-commit-guard desativado.')
+  })
+
   test('commit bom com um diretório executa', async ($, on) => {
     const ran = commitWorld(on, 'README.md\nguarda/hooks/register.tsx\nguarda/hooks/guarda.test.ts\n')
     const command = 'git commit -m "feat(guarda): adiciona regra" -m "Co-Authored-By: Claude <noreply@anthropic.com>"'

@@ -23,8 +23,8 @@ let bandOrder: Promise<string[]> | undefined // read once per session: a new ses
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     bandOrder = undefined // a new session reads the order file again
-    // Published so the meus-mods panel reads the state, never a copied default (the toggle is per session).
-    await update($, isEnabledRef, () => isEnabledRef.initial)
+    const saved = await $.store.get('isEnabled').catch(() => undefined)
+    await update($, isEnabledRef, () => (typeof saved === 'boolean' ? saved : isEnabledRef.initial))
     const r = await next(e)
     await $.command.register({ name: 'radar', description: 'Show what each subagent is doing, in the Agent Radar pane' }).catch(() => {}) // a name Claude Code already has is refused: start anyway
     await $.command.register({ name: 'radar-toggle', description: 'Toggle Agent Radar on/off' }).catch(() => {})
@@ -109,9 +109,13 @@ export const register: Register = on => {
     return { text: `${running} running, ${list.length - running} finished` }
   })
 
-  on('command.run', { command: 'radar-toggle' }, async $ => {
-    const state = await update($, isEnabledRef, v => !v)
-    return { text: `agent-radar ${state ? 'ativado' : 'desativado'}.` }
+  on('command.run', { command: 'radar-toggle' }, async ($, e) => {
+    const arg = e.args?.trim().toLowerCase()
+    const current = await read($, isEnabledRef)
+    const nextState = arg === 'on' ? true : arg === 'off' ? false : !current
+    await update($, isEnabledRef, () => nextState)
+    await $.store.set('isEnabled', nextState)
+    return { text: `agent-radar ${nextState ? 'ativado' : 'desativado'}.` }
   })
 
   // The band: one live line per running agent, and a ✓ for 30 s once one finishes.

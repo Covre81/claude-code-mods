@@ -1,7 +1,7 @@
 {
   "name": "delegation-dock",
   "version": "0.1.0",
-  "description": "Status line entry listing agy/codex/ollama delegations in flight, and a warning when agy answers empty",
+  "description": "Status line for in-flight delegations (agy/codex/ollama) and any background command, a toast when each one finishes, and a warning when agy returns empty",
   "author": {
     "name": "Bruno Covre"
   },

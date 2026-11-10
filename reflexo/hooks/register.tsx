@@ -52,7 +52,7 @@ export const register: Register = on => {
     const answer = await $.ui.ask(`Salvar como regra: "${rule}"?`, { header: 'Reflexo', options: [PROJECT, GLOBAL, IGNORE] })
     if (answer === PROJECT) await appendRule($, 'CLAUDE.md', rule) // relative = session cwd
     else if (answer === GLOBAL) {
-      const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))
+      const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) // '' on Linux, not undefined
       if (home) await appendRule($, `${home}/.claude/CLAUDE.md`, rule)
     }
     return next(e) // IGNORE or free text: nothing written

@@ -22,11 +22,23 @@ const baseName = (path: string) => (path.replace(/["']/g, '').split(/[\\/]/).pop
 
 export const isEnvFile = (path: string) => /^\.env(\..+)?$/.test(baseName(path)) && !/\.(example|sample|template)$/.test(baseName(path))
 
+const SSH_PUBLIC = /^(config.*|known_hosts.*|authorized_keys.*|environment|.*\.pub)$/
+
 export function isSecretFile(path: string): boolean {
   const base = baseName(path)
+  const full = path.replace(/["']/g, '').replace(/\\/g, '/').toLowerCase()
   if (isEnvFile(path)) return true
   if (base.endsWith('.pub')) return false
-  return /\.(pem|key)$/.test(base) || /^credentials.*\.json$/.test(base) || /^id_(rsa|ed25519)/.test(base)
+  // Anything private under .ssh, whatever its name (zimaos_vaio, id_covrepc...).
+  if (/(^|\/)\.ssh\//.test(full)) return !SSH_PUBLIC.test(base)
+  if (base === 'config.toml') return /(^|\/)\.ai-memory\//.test(full)
+  if (base === 'auth.json') return /(^|\/)\.codex\//.test(full)
+  return (
+    /\.(pem|key|p12|pfx|jks|keystore)$/.test(base) ||
+    /^\.?credentials.*\.json$/.test(base) ||
+    /^id_[\w-]+$/.test(base) ||
+    ['oauth_creds.json', '.netrc', '.pgpass'].includes(base)
+  )
 }
 
 export const MASK = '••••'
@@ -69,7 +81,13 @@ export function maskDeep<T>(value: T, values: readonly string[]): T {
   return value
 }
 
-const READERS = new Set(['cat', 'type', 'get-content', 'gc', 'more', 'less', 'head', 'tail', 'source', '.'])
+// Anything that prints or decodes a file's bytes. Writers (cp, echo >>) and git stay out: the output mask and the guarda cover those.
+const READERS = new Set([
+  'cat', 'type', 'get-content', 'gc', 'more', 'less', 'head', 'tail', 'source', '.',
+  'grep', 'egrep', 'fgrep', 'rg', 'ag', 'awk', 'gawk', 'sed', 'nl', 'tac', 'bat', 'batcat', 'view', 'vim', 'vi', 'nano',
+  'base64', 'base32', 'xxd', 'od', 'hexdump', 'strings', 'diff', 'cmp', 'sort', 'uniq', 'cut', 'paste', 'column', 'jq', 'yq',
+  'python', 'python3', 'node', 'perl', 'ruby', 'php', 'select-string', 'sls',
+])
 
 /** The secret file a shell command reads, or null. */
 export function secretReadTarget(command: string): string | null {

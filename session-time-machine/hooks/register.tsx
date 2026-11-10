@@ -98,7 +98,8 @@ async function configDir($: EngineInterface): Promise<string> {
 
 export const register: Register = (on, options) => {
   const isCopying = options.copyCommand !== false
-  const isSnapshotting = options.snapshots !== false
+  // Opt-in: each snapshot runs `git add -A` and pins untracked files under refs/time-machine/*.
+  const isSnapshotting = options.snapshots === true
   const isOpening = options.openTerminal !== false
 
   /** What a helper needs from `$`, as plain values and closures: the engine refuses `$` itself passed to a function. */
@@ -115,7 +116,7 @@ export const register: Register = (on, options) => {
 
   const reread = async (c: Ctx) => {
     await c.read(transcriptPath(c.dir, c.cwd, c.sid)).then(ingest, fail)
-    snaps = await loadSnapshots(c.run, c.cwd, c.sid)
+    if (isSnapshotting) snaps = await loadSnapshots(c.run, c.cwd, c.sid)
   }
   const snapshot = async (c: Ctx, key: string) => {
     if (!isSnapshotting) return
